@@ -62,8 +62,10 @@ async def plan_scenes_from_parts(request: DirectorPlanRequest) -> DirectorPlanRe
         learning_objectives=objectives,
         director_notes=[
             f"Planned {len(scenes)} scenes from {len(request.parts)} Markdown parts.",
-            f"Director provider: {provider}.",
-            "Each scene is grounded in one MD part for the next agent handoff.",
+            f"Director provider: {provider}"
+            + (" (sarvam-30b)" if provider == "sarvam" else "")
+            + ".",
+            "Scenes are student-facing: slide bullets, spoken narration, visuals, formative questions.",
         ],
     )
 
@@ -104,30 +106,40 @@ async def _plan_batch_with_llm(
     ]
 
     system = (
-        "You are the Classroom Director for GuruDroneAI, an AI co-teacher for Indian classrooms. "
-        "Given NCERT-style Markdown chapter parts, create teachable classroom scenes. "
+        "You are the Classroom Director for GuruDroneAI — an expert Indian school co-teacher. "
+        "Your audience is school students learning from NCERT-style chapters. "
+        "Turn each Markdown chapter part into ONE engaging classroom scene.\n\n"
         "Return ONLY valid JSON (no markdown fences) with this shape:\n"
         "{"
         '"scenes":['
         "{"
         '"part_id":"part-01",'
-        '"title":"...",'
-        '"headline":"...",'
-        '"bullets":["...","..."],'
-        '"narration":"spoken teacher script, 2-4 sentences",'
-        '"visual_prompt":"image generation prompt for classroom visual",'
-        '"questions":["...","..."],'
-        '"speaker_notes":"..."'
+        '"title":"short student-friendly section title",'
+        '"headline":"slide headline students can read at a glance",'
+        '"bullets":["3-5 crisp learning points, not copied paragraphs"],'
+        '"narration":"spoken teacher script: warm, clear, 4-7 sentences; hook + explain + check understanding",'
+        '"visual_prompt":"detailed classroom visual / illustration prompt grounded in the content",'
+        '"questions":["2-3 formative questions a teacher can ask the class"],'
+        '"speaker_notes":"1-2 tip lines for the teacher"'
         "}"
         "]"
-        "}\n"
-        "Rules: one scene per part_id; bullets max 5 short points; keep narration classroom-friendly; "
-        f"write narration primarily in language code '{request.language}'."
+        "}\n\n"
+        "Hard rules:\n"
+        "- Exactly one scene per input part_id\n"
+        "- Stay faithful to the source Markdown; do not invent facts\n"
+        "- Prefer concrete examples, timelines, causes/effects, and comparisons students remember\n"
+        "- Bullets must be short (<= 18 words), exam-useful, and age-appropriate\n"
+        "- Narration should sound spoken, not like a textbook dump\n"
+        "- Questions should check understanding, not trivia\n"
+        f"- Write narration primarily in language code '{request.language}' "
+        "(use natural Hindi if language is hi/hindi; otherwise English with simple wording)\n"
+        "- If language is English, keep narration accessible for Indian middle-school students"
     )
     user = (
         f"Lesson title: {request.title}\n"
         f"Subject: {request.subject or 'General'}\n"
-        f"Grade: {request.grade_level or 'unspecified'}\n"
+        f"Grade: {request.grade_level or 'middle school / secondary'}\n"
+        "Goal: generate better classroom scenes that help students understand and remember.\n"
         f"Parts JSON:\n{json.dumps(parts_payload, ensure_ascii=False)}"
     )
 
@@ -136,8 +148,8 @@ async def _plan_batch_with_llm(
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        temperature=0.35,
-        max_tokens=3200,
+        temperature=0.4,
+        max_tokens=4000,
     )
     parsed = extract_json_object(content)
     raw_scenes = parsed.get("scenes") if isinstance(parsed, dict) else parsed
@@ -274,6 +286,7 @@ async def handle_command(command: str, language: str, scenes: list[dict[str, Any
                     "content": (
                         "You are Guru, a live classroom co-teacher for Indian students. "
                         "Respond to the teacher's mid-class command briefly and helpfully. "
+                        "If they ask for Hindi, explain the current scene clearly in simple Hindi. "
                         "Return ONLY JSON: "
                         '{"action":"translate_and_explain|skip_section|ask_class|give_example|simplify|general_assist",'
                         '"spoken_response":"..."}'
@@ -290,11 +303,15 @@ async def handle_command(command: str, language: str, scenes: list[dict[str, Any
                 },
             ],
             temperature=0.4,
-            max_tokens=500,
+            max_tokens=700,
         )
         parsed = extract_json_object(content)
+        if not isinstance(parsed, dict):
+            raise LLMError("Command response was not a JSON object")
         action = str(parsed.get("action") or "general_assist")
-        spoken = str(parsed.get("spoken_response") or content)
+        spoken = str(parsed.get("spoken_response") or content).strip()
+        if not spoken:
+            raise LLMError("Empty spoken_response from LLM")
         return {
             "action": action,
             "spoken_response": spoken,
@@ -306,8 +323,13 @@ async def handle_command(command: str, language: str, scenes: list[dict[str, Any
                 in {"simplify", "give_example", "translate_and_explain"},
             },
         }
-    except Exception:
-        return _handle_command_heuristic(command, language, scenes)
+    except Exception as exc:  # noqa: BLE001
+        fallback = _handle_command_heuristic(command, language, scenes)
+        fallback["error"] = str(exc)
+        fallback["spoken_response"] = (
+            f"{fallback['spoken_response']}\n\n(LLM error: {exc})"
+        )
+        return fallback
 
 
 def _handle_command_heuristic(

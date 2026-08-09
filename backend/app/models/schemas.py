@@ -23,6 +23,21 @@ class LessonCreateRequest(BaseModel):
     subject: str | None = None
     grade_level: str | None = None
     language: str = "en"
+    scene_count: int | None = Field(
+        default=None,
+        ge=1,
+        le=24,
+        description="Optional requested number of classroom scenes",
+    )
+
+
+class GenerateScenesRequest(BaseModel):
+    scene_count: int = Field(
+        default=8,
+        ge=1,
+        le=24,
+        description="How many classroom scenes to plan from the chapter (video generation comes later)",
+    )
 
 
 class MdPart(BaseModel):
@@ -43,6 +58,13 @@ class SlideContent(BaseModel):
     speaker_notes: str | None = None
 
 
+class SceneMediaKind(str, Enum):
+    """How the scene will be rendered later — only a label in this service."""
+
+    PRESENTATION = "presentation"  # ~80% — PPT-style slides / paragraphs / images
+    VIDEO = "video"  # ~20% — short video moments
+
+
 class Scene(BaseModel):
     id: str
     part_id: str | None = None
@@ -51,6 +73,20 @@ class Scene(BaseModel):
     narration: str
     visual_prompt: str | None = None
     questions: list[str] = Field(default_factory=list)
+    media_kind: SceneMediaKind = SceneMediaKind.PRESENTATION
+
+
+class PresentationPage(BaseModel):
+    """One PPT-style page generated for a scene (paragraphs + optional image)."""
+
+    scene_id: str
+    title: str
+    headline: str
+    paragraphs: list[str] = Field(default_factory=list)
+    image_prompt: str | None = None
+    image_url: str | None = None
+    media_kind: SceneMediaKind = SceneMediaKind.PRESENTATION
+    status: str = "ready"  # ready | text_only | failed
 
 
 class Lesson(BaseModel):
@@ -62,10 +98,14 @@ class Lesson(BaseModel):
     subject: str | None = None
     grade_level: str | None = None
     language: str = "en"
+    target_scene_count: int | None = None
+    scenes_approved: bool = False
+    director_notes: list[str] = Field(default_factory=list)
     status: LessonStatus = LessonStatus.DRAFT
     md_parts: list[MdPart] = Field(default_factory=list)
     parts_dir: str | None = None
     scenes: list[Scene] = Field(default_factory=list)
+    presentation_pages: list[PresentationPage] = Field(default_factory=list)
     quiz: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

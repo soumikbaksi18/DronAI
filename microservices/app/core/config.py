@@ -3,13 +3,12 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
 _SERVICE_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(str(_SERVICE_ROOT / ".env"), str(_REPO_ROOT / ".env")),
+        env_file=str(_SERVICE_ROOT / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -31,7 +30,11 @@ class Settings(BaseSettings):
 
     @property
     def has_sarvam(self) -> bool:
-        return bool(self.sarvam_api_key and self.sarvam_api_key.strip())
+        key = (self.sarvam_api_key or "").strip()
+        # OpenAI project keys look like sk-proj-... and will never authenticate to Sarvam.
+        if not key or key.startswith("sk-proj-"):
+            return False
+        return True
 
     @property
     def has_openai(self) -> bool:
@@ -41,3 +44,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def clear_settings_cache() -> None:
+    get_settings.cache_clear()

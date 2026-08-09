@@ -1,10 +1,17 @@
-"""Extract plain text from uploaded lesson sources (PDF / Markdown / text)."""
+"""Extract plain text from uploaded lesson sources (PDF / Markdown / text).
+
+PDFs prefer Sarvam Document AI (Vision digitise → Markdown), then fall back to pypdf.
+"""
 
 from __future__ import annotations
 
+import logging
 import re
 from io import BytesIO
 
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".pdf", ".md", ".markdown", ".txt"}
 
@@ -16,17 +23,37 @@ def normalize_extension(filename: str) -> str:
     return f".{name[1]}"
 
 
-def extract_text(filename: str, data: bytes) -> str:
+async def extract_text(
+    filename: str,
+    data: bytes,
+    *,
+    language: str = "en",
+) -> tuple[str, str]:
+    """Return (text, extractor_name). extractor_name is sarvam-doc-ai | pypdf | plaintext."""
     ext = normalize_extension(filename)
     if ext not in SUPPORTED_EXTENSIONS:
         raise ValueError(f"Unsupported file type '{ext or 'unknown'}'. Use PDF, Markdown, or TXT.")
 
     if ext == ".pdf":
-        return _extract_pdf(data)
-    return _clean_text(data.decode("utf-8", errors="replace"))
+        return await _extract_pdf(data, filename=filename, language=language)
+    return _clean_text(data.decode("utf-8", errors="replace")), "plaintext"
 
 
-def _extract_pdf(data: bytes) -> str:
+async def _extract_pdf(data: bytes, *, filename: str, language: str) -> tuple[str, str]:
+    settings = get_settings()
+    if settings.has_sarvam and settings.use_sarvam_document_ai:
+        try:
+            from app.services.sarvam_docs import digitise_pdf_to_markdown
+
+            markdown = await digitise_pdf_to_markdown(data, filename, language=language)
+            return _clean_pdf_text(markdown), "sarvam-doc-ai"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Sarvam Document AI failed; falling back to pypdf: %s", exc)
+
+    return _extract_pdf_pypdf(data), "pypdf"
+
+
+def _extract_pdf_pypdf(data: bytes) -> str:
     try:
         from pypdf import PdfReader
     except ImportError as exc:  # pragma: no cover
@@ -55,11 +82,7 @@ def _clean_pdf_text(text: str) -> str:
 
 
 def _collapse_spaced_characters(text: str) -> str:
-    """Collapse runs of single-character tokens common in some PDF extractions.
-
-    Handles patterns like ``T h e  F r e n c h`` → ``The French`` by treating
-    2+ spaces as word boundaries, then joining single-character tokens.
-    """
+    """Collapse runs of single-character tokens common in some PDF extractions."""
 
     def collapse_segment(segment: str) -> str:
         tokens = segment.split(" ")

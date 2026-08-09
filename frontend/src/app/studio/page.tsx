@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
-import { api, type Lesson, type MdPart } from "@/lib/api";
+import { api, type Lesson, type MdPart, type Scene, type SceneMediaKind } from "@/lib/api";
 import { assetTypeFromName, runMockGenerate } from "@/lib/mock-generate";
 import { saveLesson } from "@/lib/lesson-store";
 import type { LessonAsset } from "@/lib/types";
@@ -25,7 +25,7 @@ Dates are a convenient way to keep track of events, but they must be understood 
 Manuscripts were often written on palm leaf or birch bark. Inscriptions are writings on hard surfaces such as stone or metal.`;
 
 type InputMode = "upload" | "paste";
-type ResultTab = "parts" | "scenes" | "report" | "command";
+type ResultTab = "parts" | "scenes" | "command";
 
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
@@ -36,10 +36,48 @@ function formatBytes(size: number) {
 function statusTone(status: string) {
   if (status === "Failed") return "danger";
   if (status === "Idle") return "muted";
-  if (status.startsWith("Ready") || status.includes("ready") || status.includes("handled")) {
+  if (
+    status.startsWith("Ready") ||
+    status.includes("ready") ||
+    status.includes("handled") ||
+    status.includes("Approved")
+  ) {
     return "ready";
   }
   return "busy";
+}
+
+function withMediaTags(scenes: Scene[]): (Scene & { media_kind: SceneMediaKind })[] {
+  if (!scenes.length) return [];
+  const alreadyTagged = scenes.every(
+    (scene) => scene.media_kind === "presentation" || scene.media_kind === "video",
+  );
+  if (alreadyTagged) {
+    return scenes.map((scene) => ({
+      ...scene,
+      media_kind: scene.media_kind === "video" ? "video" : "presentation",
+    }));
+  }
+
+  // Fallback 80/20 if backend didn't send media_kind yet
+  const videoCount = Math.max(scenes.length >= 5 ? 1 : 0, Math.round(scenes.length * 0.2));
+  const scored = scenes
+    .map((scene, index) => {
+      const text = `${scene.title} ${scene.narration} ${scene.visual_prompt ?? ""}`.toLowerCase();
+      let score = 0;
+      for (const token of ["revolution", "battle", "war", "protest", "storm", "journey", "freedom"]) {
+        if (text.includes(token)) score += 2;
+      }
+      score += Math.min((scene.visual_prompt ?? "").length, 120) / 80;
+      return { index, score };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const videoIndexes = new Set(scored.slice(0, videoCount).map((item) => item.index));
+
+  return scenes.map((scene, index) => ({
+    ...scene,
+    media_kind: videoIndexes.has(index) ? "video" : "presentation",
+  }));
 }
 
 function StudioPage() {
@@ -47,12 +85,12 @@ function StudioPage() {
   const [title, setTitle] = useState("What, Where, How and When?");
   const [sourceText, setSourceText] = useState(SAMPLE_LESSON);
   const [file, setFile] = useState<File | null>(null);
+  const [sceneCount, setSceneCount] = useState(8);
   const [inputMode, setInputMode] = useState<InputMode>("upload");
   const [resultTab, setResultTab] = useState<ResultTab>("parts");
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [parts, setParts] = useState<MdPart[]>([]);
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [commandResult, setCommandResult] = useState<Record<string, unknown> | null>(null);
   const [command, setCommand] = useState("Guru, explain this in Hindi.");
   const [status, setStatus] = useState<string>("Idle");
@@ -67,13 +105,14 @@ function StudioPage() {
   const selectedPart = parts.find((part) => part.id === selectedPartId) ?? parts[0] ?? null;
   const tone = statusTone(status);
   const canRun = Boolean(file || (title.trim() && sourceText.trim()));
+  const canApprove = Boolean(lesson?.scenes?.length && !lesson.scenes_approved);
 
   const workflowSteps = useMemo(
     () => [
       { id: "1", label: "Ingest" },
       { id: "2", label: "Split MD" },
-      { id: "3", label: "Director" },
-      { id: "4", label: "Simulate" },
+      { id: "3", label: "Plan scenes" },
+      { id: "4", label: "Approve" },
     ],
     [],
   );
@@ -83,10 +122,9 @@ function StudioPage() {
     if (next) setInputMode("upload");
   }
 
-  async function ingestAndPlan(simulateAfter = true) {
+  async function ingestAndPlan() {
     setBusy(true);
     setError(null);
-    setReport(null);
     setCommandResult(null);
     setResultTab("parts");
 
@@ -98,6 +136,7 @@ function StudioPage() {
           title: title.trim() || undefined,
           subject: "History",
           language: "en",
+          scene_count: sceneCount,
         });
       } else {
         setStatus("Parsing Markdown into parts…");
@@ -106,6 +145,7 @@ function StudioPage() {
           source_text: sourceText,
           subject: "History",
           language: "en",
+          scene_count: sceneCount,
         });
       }
 
@@ -114,23 +154,32 @@ function StudioPage() {
       setSelectedPartId(created.md_parts?.[0]?.id ?? null);
       setTitle(created.title);
 
-      setStatus("Classroom Director planning scenes…");
-      const generated = await api.generateLesson(created.id);
+      setStatus(`Planning ${sceneCount} classroom scenes…`);
+      const generated = await api.generateLesson(created.id, sceneCount);
       setLesson(generated);
       setParts(generated.md_parts ?? created.md_parts ?? []);
-
-      if (simulateAfter) {
-        setStatus("Simulating classroom…");
-        const simulation = await api.simulateClassroom(generated.id);
-        setReport(simulation);
-        setStatus("Ready — MD parts + scenes available");
-        setResultTab("scenes");
-      } else {
-        setStatus("Scenes ready from MD parts");
-        setResultTab("scenes");
-      }
+      setStatus(`Scenes ready (${generated.scenes?.length ?? 0}) — review & approve`);
+      setResultTab("scenes");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      setStatus("Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveScenes() {
+    if (!lesson) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setStatus("Approving scenes…");
+      const approved = await api.approveScenes(lesson.id);
+      setLesson(approved);
+      setStatus("Approved — opening presentation pages…");
+      router.push(`/studio/${approved.id}/presentations`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Approve failed");
       setStatus("Failed");
     } finally {
       setBusy(false);
@@ -227,8 +276,8 @@ function StudioPage() {
             Lesson Studio
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)] sm:text-base">
-            Upload an NCERT chapter, split it into Markdown parts, then hand them to the Classroom
-            Director for scenes — and publish an Interactive classroom deck.
+            Upload an NCERT chapter, split it into Markdown parts, plan classroom scenes, approve
+            them for presentation pages, or publish an Interactive classroom deck.
           </p>
         </div>
 
@@ -294,6 +343,26 @@ function StudioPage() {
               className="w-full rounded-2xl border border-[var(--line)] bg-white/80 px-3.5 py-2.5 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white"
               placeholder="e.g. The French Revolution"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium">Number of scenes</span>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={1}
+                max={24}
+                step={1}
+                value={sceneCount}
+                onChange={(e) =>
+                  setSceneCount(Math.max(1, Math.min(24, Number(e.target.value) || 1)))
+                }
+                className="w-28 rounded-2xl border border-[var(--line)] bg-white/80 px-3.5 py-2.5 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white"
+              />
+              <p className="text-xs leading-5 text-[var(--ink-muted)]">
+                Classroom scenes only on this page. Presentation pages come after approval.
+              </p>
+            </div>
           </label>
 
           <div className="flex rounded-2xl border border-[var(--line)] bg-white/50 p-1">
@@ -388,19 +457,27 @@ function StudioPage() {
             <button
               type="button"
               disabled={busy || !canRun || (inputMode === "upload" && !file)}
-              onClick={() => ingestAndPlan(true)}
+              onClick={() => ingestAndPlan()}
               className="rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {busy ? "Running pipeline…" : "Upload → Split → Direct → Simulate"}
+              {busy ? "Planning scenes…" : "Upload → Split → Plan scenes"}
             </button>
             <button
               type="button"
-              disabled={busy || !canRun || (inputMode === "upload" && !file)}
-              onClick={() => ingestAndPlan(false)}
+              disabled={busy || !canApprove}
+              onClick={() => approveScenes()}
               className="rounded-2xl border border-[var(--line)] bg-white/80 px-5 py-3 text-sm font-medium transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
             >
-              Split + Director only
+              {lesson?.scenes_approved ? "Scenes approved" : "Approve scenes"}
             </button>
+            {lesson?.scenes_approved ? (
+              <Link
+                href={`/studio/${lesson.id}/presentations`}
+                className="text-center text-xs leading-5 text-[var(--accent)] underline-offset-2 hover:underline"
+              >
+                Open presentation pages →
+              </Link>
+            ) : null}
           </div>
         </section>
 
@@ -411,7 +488,6 @@ function StudioPage() {
               [
                 ["parts", `MD parts${parts.length ? ` (${parts.length})` : ""}`],
                 ["scenes", `Scenes${lesson?.scenes?.length ? ` (${lesson.scenes.length})` : ""}`],
-                ["report", "Readiness"],
                 ["command", "Live command"],
               ] as const
             ).map(([tab, label]) => (
@@ -503,12 +579,12 @@ function StudioPage() {
                 <div className="border-b border-[var(--line)] px-4 py-3 sm:px-5">
                   <h2 className="font-[family-name:var(--font-display)] text-lg">Director scenes</h2>
                   <p className="text-xs text-[var(--ink-muted)]">
-                    Slide bullets, narration, and visual prompts
+                    ~80% presentation · ~20% video labels — content is generated on the next page
                   </p>
                 </div>
                 {lesson?.scenes?.length ? (
                   <ul className="studio-scroll max-h-[34rem] space-y-0 overflow-y-auto p-2 sm:p-3">
-                    {lesson.scenes.map((scene, index) => (
+                    {withMediaTags(lesson.scenes).map((scene, index) => (
                       <li
                         key={scene.id}
                         className="rounded-2xl px-3 py-4 transition hover:bg-white/55 sm:px-4"
@@ -517,8 +593,22 @@ function StudioPage() {
                           <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-mono text-[11px] text-[var(--accent)]">
                             {String(index + 1).padStart(2, "0")}
                           </span>
-                          <div className="min-w-0">
-                            <p className="font-medium">{scene.title}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium">{scene.title}</p>
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                aria-label={`Scene media type: ${scene.media_kind}`}
+                                className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${
+                                  scene.media_kind === "video"
+                                    ? "border-[var(--foreground)] bg-[var(--foreground)] text-white"
+                                    : "border-[var(--accent)]/30 bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+                                }`}
+                              >
+                                {scene.media_kind === "video" ? "Video" : "Presentation"}
+                              </button>
+                            </div>
                             {scene.slide?.bullets?.length ? (
                               <ul className="mt-2 space-y-1 text-sm text-[var(--ink-muted)]">
                                 {scene.slide.bullets.slice(0, 4).map((bullet) => (
@@ -546,26 +636,7 @@ function StudioPage() {
                 ) : (
                   <EmptyState
                     title="No scenes yet"
-                    body="Run Split + Director to generate classroom scenes from your MD parts."
-                  />
-                )}
-              </div>
-            ) : null}
-
-            {resultTab === "report" ? (
-              <div className="flex h-full min-h-[28rem] flex-col">
-                <div className="border-b border-[var(--line)] px-4 py-3 sm:px-5">
-                  <h2 className="font-[family-name:var(--font-display)] text-lg">Readiness report</h2>
-                  <p className="text-xs text-[var(--ink-muted)]">Simulation output from the classroom loop</p>
-                </div>
-                {report ? (
-                  <pre className="md-preview studio-scroll max-h-[34rem] overflow-auto p-4 text-[12px] leading-6 text-[var(--foreground)] sm:p-5">
-                    {JSON.stringify(report, null, 2)}
-                  </pre>
-                ) : (
-                  <EmptyState
-                    title="No report yet"
-                    body="Run the full pipeline to simulate the classroom and fill this report."
+                    body="Run Upload → Split → Plan scenes to generate classroom scenes from your MD parts."
                   />
                 )}
               </div>
@@ -691,18 +762,18 @@ function StudioPage() {
           <button
             type="button"
             disabled={busy || !canRun || (inputMode === "upload" && !file)}
-            onClick={() => ingestAndPlan(true)}
+            onClick={() => ingestAndPlan()}
             className="flex-1 rounded-2xl bg-[var(--accent)] px-3 py-3 text-sm font-medium text-white disabled:opacity-45"
           >
-            {busy ? "Running…" : "Full pipeline"}
+            {busy ? "Planning…" : "Plan scenes"}
           </button>
           <button
             type="button"
-            disabled={busy || !canRun || (inputMode === "upload" && !file)}
-            onClick={() => ingestAndPlan(false)}
+            disabled={busy || !canApprove}
+            onClick={() => approveScenes()}
             className="rounded-2xl border border-[var(--line)] bg-white px-3 py-3 text-sm font-medium disabled:opacity-45"
           >
-            Split only
+            Approve
           </button>
         </div>
       </div>

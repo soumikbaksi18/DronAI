@@ -14,13 +14,13 @@ cd microservices
 python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-# Put keys in repo-root .env (see ../.env.example)
+cp .env.example .env   # keys live in microservices/.env only
 uvicorn app.main:app --reload --port 8001
 ```
 
 API docs: http://localhost:8001/docs
 
-## Env
+## Env (`microservices/.env`)
 
 | Variable | Purpose |
 |----------|---------|
@@ -28,7 +28,7 @@ API docs: http://localhost:8001/docs
 | `SARVAM_CHAT_MODEL` | default `sarvam-30b` |
 | `SARVAM_TTS_MODEL` | default `bulbul:v3` |
 | `SARVAM_STT_MODEL` | default `saaras:v3` |
-| `OPENAI_API_KEY` | Optional LLM fallback for Director |
+| `OPENAI_API_KEY` | Optional LLM fallback for live classroom commands |
 
 Provider preference: **Sarvam → OpenAI → heuristic stub**.
 
