@@ -80,20 +80,35 @@ Open:
 docker compose up --build
 ```
 
-## Scaffold status
+## Current lesson pipeline
+
+```text
+PDF / Markdown upload
+        ↓
+   Text extract
+        ↓
+ Split into MD parts  (saved under uploads/<lesson_id>/parts/)
+        ↓
+ Classroom Director  (slides + visuals + narration)
+        ↓
+   Scenes ready → Simulate / Live commands
+```
 
 What works today (deterministic stubs — no API keys required):
 
-- Create a lesson from markdown/text
-- Generate scenes / narration / quiz prompts
+- Upload NCERT-style PDF or Markdown chapter
+- Split into structured Markdown parts on disk
+- Classroom Director plans scenes from those parts
 - Simulate four student personas and get a readiness report
 - Send a live classroom command (e.g. explain in Hindi)
 
+Sample chapter: `samples/ncert_history_ch1.md`
+
 What to build next (see MVP in the project doc):
 
-- Real LLM generation + grounded content
+- Richer Director visuals / LLM narration (friend lane)
 - Sarvam speech (STT / TTS / multilingual)
-- Persistent storage & PDF upload
+- Persistent database storage
 - Live classroom presentation + adaptive moment
 - Rich readiness report UI
 

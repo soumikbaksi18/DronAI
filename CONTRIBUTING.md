@@ -21,9 +21,15 @@ genai-microservices/   FastAPI agent services (generate / simulate / director)
 
 | Area | Good first tasks |
 |------|------------------|
-| Frontend | Lesson upload UI, scene viewer, readiness report visuals, live classroom controls |
-| Backend | Persist lessons in Postgres, auth, file upload (PDF), websocket for live class |
-| GenAI | Real LLM lesson generation, persona agents, Sarvam voice, grounding from source docs |
+| Frontend | Richer MD-part editor, scene/slide viewer, readiness report visuals, live classroom controls |
+| Backend | Persist lessons in Postgres, better PDF cleanup, websocket for live class |
+| GenAI / Director | Real LLM scene generation from MD parts, visuals, Sarvam narration, persona agents |
+
+### Lesson intake → Director handoff
+
+1. Backend `POST /v1/lessons/upload` extracts PDF/MD and splits into `uploads/<lesson_id>/parts/*.md`
+2. Backend `POST /v1/lessons/{id}/generate` sends those parts to GenAI `POST /v1/director/plan-scenes`
+3. Director returns scenes with `slide`, `visual_prompt`, `narration`, grounded by `part_id`
 
 ## Local workflow
 

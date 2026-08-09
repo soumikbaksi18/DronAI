@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     backend_port: int = 8000
     genai_service_url: str = "http://localhost:8001"
     cors_origins: str = "http://localhost:3000"
+    upload_dir: str = "uploads"
 
     @property
     def cors_origin_list(self) -> list[str]:

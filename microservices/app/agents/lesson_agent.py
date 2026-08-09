@@ -1,9 +1,19 @@
-"""Lesson Planner / Content Agent — scaffold implementation."""
+"""Legacy whole-text lesson generator.
 
-from app.models.schemas import GenerateLessonRequest, GenerateLessonResponse, SceneOut
+Prefer the Classroom Director (`director_agent.plan_scenes_from_parts`) which
+consumes structured MD parts from the lesson input pipeline.
+"""
+
+from app.agents.director_agent import plan_scenes_from_parts
+from app.models.schemas import (
+    DirectorPlanRequest,
+    GenerateLessonRequest,
+    GenerateLessonResponse,
+    MdPartIn,
+)
 
 
-def _chunk_source(text: str, max_chunks: int = 5) -> list[str]:
+def _chunk_source(text: str, max_chunks: int = 8) -> list[str]:
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     if not paragraphs:
         paragraphs = [text.strip()] if text.strip() else ["Untitled content"]
@@ -12,42 +22,26 @@ def _chunk_source(text: str, max_chunks: int = 5) -> list[str]:
 
 def generate_lesson(request: GenerateLessonRequest) -> GenerateLessonResponse:
     chunks = _chunk_source(request.source_text)
-    scenes: list[SceneOut] = []
-
-    for index, chunk in enumerate(chunks, start=1):
-        title = chunk.split("\n", 1)[0][:80] or f"Scene {index}"
-        scenes.append(
-            SceneOut(
-                id=f"scene-{index}",
-                title=title,
-                narration=(
-                    f"[{request.language}] Explain: {chunk[:400]}"
-                    + ("..." if len(chunk) > 400 else "")
-                ),
-                visual_prompt=f"Educational illustration for: {title}",
-                questions=[
-                    f"What is the key idea in '{title}'?",
-                    f"Can you give an example related to '{title}'?",
-                ],
-            )
+    parts = [
+        MdPartIn(
+            id=f"part-{index:02d}",
+            index=index,
+            title=(chunk.split("\n", 1)[0][:80] or f"Part {index}"),
+            markdown=f"# Part {index}\n\n{chunk}\n",
         )
-
-    quiz = [
-        {
-            "id": f"q-{i}",
-            "question": scene.questions[0] if scene.questions else f"Question about {scene.title}",
-            "options": ["Option A", "Option B", "Option C", "Option D"],
-            "answer_index": 0,
-        }
-        for i, scene in enumerate(scenes[:3], start=1)
+        for index, chunk in enumerate(chunks, start=1)
     ]
-
+    planned = plan_scenes_from_parts(
+        DirectorPlanRequest(
+            title=request.title,
+            parts=parts,
+            subject=request.subject,
+            grade_level=request.grade_level,
+            language=request.language,
+        )
+    )
     return GenerateLessonResponse(
-        scenes=scenes,
-        quiz=quiz,
-        learning_objectives=[
-            f"Understand the core ideas in {request.title}",
-            "Answer formative questions during the lesson",
-            "Identify where students may struggle",
-        ],
+        scenes=planned.scenes,
+        quiz=planned.quiz,
+        learning_objectives=planned.learning_objectives,
     )

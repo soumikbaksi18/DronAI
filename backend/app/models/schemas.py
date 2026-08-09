@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 class LessonStatus(str, Enum):
     DRAFT = "draft"
+    PARSING = "parsing"
+    PARSED = "parsed"
     GENERATING = "generating"
     READY = "ready"
     SIMULATING = "simulating"
@@ -23,9 +25,29 @@ class LessonCreateRequest(BaseModel):
     language: str = "en"
 
 
+class MdPart(BaseModel):
+    """One structured Markdown section of a chapter, ready for the Classroom Director."""
+
+    id: str
+    index: int
+    title: str
+    markdown: str
+    filename: str
+    char_count: int = 0
+    summary: str | None = None
+
+
+class SlideContent(BaseModel):
+    headline: str
+    bullets: list[str] = Field(default_factory=list)
+    speaker_notes: str | None = None
+
+
 class Scene(BaseModel):
     id: str
+    part_id: str | None = None
     title: str
+    slide: SlideContent | None = None
     narration: str
     visual_prompt: str | None = None
     questions: list[str] = Field(default_factory=list)
@@ -35,10 +57,14 @@ class Lesson(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     title: str
     source_text: str
+    source_filename: str | None = None
+    source_type: str | None = None
     subject: str | None = None
     grade_level: str | None = None
     language: str = "en"
     status: LessonStatus = LessonStatus.DRAFT
+    md_parts: list[MdPart] = Field(default_factory=list)
+    parts_dir: str | None = None
     scenes: list[Scene] = Field(default_factory=list)
     quiz: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
