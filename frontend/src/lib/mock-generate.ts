@@ -1,3 +1,5 @@
+import { assetUrl, type PresentationPage, type Scene } from "./api";
+import { getActiveStitchedDeck, listStitchedDecks } from "./studio-deck-store";
 import type {
   Hotspot,
   LessonAsset,
@@ -124,14 +126,122 @@ function hotspotFor(sceneTitle: string, index: number): Hotspot {
     },
   ];
   const pick = replies[index % replies.length];
+  // Keep hotspots on the text side so the guide can stay in the bottom-right image zone.
   return {
     id: `hs-${index}`,
     label: pick.prompt,
-    x: 18 + (index % 3) * 28,
-    y: 42 + (index % 2) * 18,
+    x: 14 + (index % 2) * 22,
+    y: 28 + (index % 3) * 12,
     prompt: pick.prompt,
     reply: pick.reply,
   };
+}
+
+/** Turn OpenAI presentation page images into deck assets the player can render. */
+export function assetsFromPresentationPages(pages: PresentationPage[]): LessonAsset[] {
+  const assets: LessonAsset[] = [];
+  for (const page of pages) {
+    const url = assetUrl(page.image_url);
+    if (!url) continue;
+    assets.push({
+      id: `img-${page.scene_id}`,
+      name: page.headline || page.title,
+      type: "image",
+      url,
+      size: 0,
+    });
+  }
+  return assets;
+}
+
+/** Attach approved presentation images to an older interactive deck that lacked them. */
+export function withPresentationImages(lesson: LessonExperience): LessonExperience {
+  const alreadyWired =
+    lesson.assets.some((asset) => asset.type === "image") &&
+    lesson.scenes.some((scene) => scene.mediaIds.length > 0);
+  if (alreadyWired) return lesson;
+
+  const deck =
+    listStitchedDecks().find((item) => item.title === lesson.title) ?? getActiveStitchedDeck();
+  const pages = deck?.presentation_pages ?? [];
+  if (!pages.length) return lesson;
+
+  const pageAssets = assetsFromPresentationPages(pages);
+  if (!pageAssets.length) return lesson;
+
+  const assets = [
+    ...lesson.assets,
+    ...pageAssets.filter((asset) => !lesson.assets.some((existing) => existing.id === asset.id)),
+  ];
+  const scenes = lesson.scenes.map((scene, index) => {
+    if (scene.mediaIds.length) return scene;
+    const page = pages.find((item) => item.scene_id === scene.id) ?? pages[index] ?? null;
+    if (!page?.image_url) return scene;
+    return { ...scene, mediaIds: [`img-${page.scene_id}`] };
+  });
+
+  return { ...lesson, assets, scenes, updatedAt: new Date().toISOString() };
+}
+
+function buildScenesFromPresentationPages(
+  title: string,
+  pages: PresentationPage[],
+): DeckScene[] {
+  return pages.map((page, i) => {
+    const body =
+      page.paragraphs?.filter(Boolean).join("\n\n").slice(0, 520) ||
+      page.headline ||
+      page.title;
+    const sceneTitle = page.headline || page.title || `Scene ${i + 1}`;
+    const type: SceneType =
+      i === 0 ? "title" : i === pages.length - 1 && pages.length > 1 ? "summary" : "concept";
+    const mediaId = page.image_url ? `img-${page.scene_id}` : undefined;
+
+    return {
+      id: page.scene_id || `scene-${i + 1}`,
+      type,
+      title: i === 0 && type === "title" ? title || sceneTitle : sceneTitle,
+      body:
+        type === "title"
+          ? body || `An interactive classroom deck · ${pages.length} scenes`
+          : body,
+      hotspots:
+        type === "concept" || type === "summary"
+          ? [hotspotFor(sceneTitle, i)].slice(0, 1)
+          : [],
+      mediaIds: mediaId ? [mediaId] : [],
+    };
+  });
+}
+
+function buildScenesFromBackendScenes(
+  title: string,
+  backendScenes: Scene[],
+  pages: PresentationPage[],
+): DeckScene[] {
+  const pageByScene = new Map(pages.map((page) => [page.scene_id, page]));
+  return backendScenes.map((scene, i) => {
+    const page = pageByScene.get(scene.id);
+    const bullets = scene.slide?.bullets?.join(" · ") ?? "";
+    const body =
+      page?.paragraphs?.filter(Boolean).join("\n\n").slice(0, 520) ||
+      scene.narration?.slice(0, 520) ||
+      bullets ||
+      scene.title;
+    const sceneTitle = page?.headline || scene.slide?.headline || scene.title;
+    const type: SceneType =
+      i === 0 ? "title" : i === backendScenes.length - 1 && backendScenes.length > 1 ? "summary" : "concept";
+    const mediaId = page?.image_url ? `img-${page.scene_id}` : undefined;
+
+    return {
+      id: scene.id,
+      type,
+      title: i === 0 && type === "title" ? title || sceneTitle : sceneTitle,
+      body,
+      hotspots: type === "concept" ? [hotspotFor(sceneTitle, i)] : [],
+      mediaIds: mediaId ? [mediaId] : [],
+    };
+  });
 }
 
 const SCENE_PATTERN: SceneType[] = [
@@ -184,6 +294,12 @@ function buildScenes(
           ? [hotspotFor(sceneTitle, i)]
           : [];
 
+    // Prefer attaching a presentation image whenever we have one — not only on "media" slides.
+    const mediaIds =
+      imageIds.length && (type === "media" || type === "concept" || type === "title")
+        ? [imageIds[i % imageIds.length]]
+        : [];
+
     scenes.push({
       id: `scene-${i + 1}`,
       type,
@@ -199,7 +315,7 @@ function buildScenes(
                 ? "Tap a hotspot to check your understanding. Your guide will respond."
                 : chunk.slice(0, 420),
       hotspots,
-      mediaIds: type === "media" && imageIds.length ? [imageIds[i % imageIds.length]] : [],
+      mediaIds,
     });
   }
 
@@ -212,6 +328,10 @@ export type GenerateInput = {
   mode: LessonMode;
   assets: LessonAsset[];
   sourceText?: string;
+  /** Approved OpenAI presentation pages — used for slide copy + images when present. */
+  presentationPages?: PresentationPage[];
+  /** Backend-planned scenes — preferred over chunking source text. */
+  backendScenes?: Scene[];
 };
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -247,7 +367,23 @@ export async function runMockGenerate(
   onStage?.(GENERATE_STAGES[3], 3);
   await delay(700);
 
-  const sceneCount = DURATION_SCENE_COUNTS[input.durationMin];
+  const pages = input.presentationPages ?? [];
+  const pageAssets = assetsFromPresentationPages(pages);
+  const assets = [
+    ...input.assets,
+    ...pageAssets.filter((asset) => !input.assets.some((existing) => existing.id === asset.id)),
+  ];
+
+  let scenes: DeckScene[];
+  if (input.backendScenes?.length) {
+    scenes = buildScenesFromBackendScenes(title, input.backendScenes, pages);
+  } else if (pages.length) {
+    scenes = buildScenesFromPresentationPages(title, pages);
+  } else {
+    const sceneCount = DURATION_SCENE_COUNTS[input.durationMin];
+    scenes = buildScenes(title, sourceText, sceneCount, assets);
+  }
+
   const now = new Date().toISOString();
   const id = `les-${Date.now().toString(36)}`;
   const slug = `${slugify(title)}-${shortId()}`;
@@ -258,10 +394,10 @@ export async function runMockGenerate(
     title,
     durationMin: input.durationMin,
     mode: input.mode,
-    assets: input.assets,
+    assets,
     sourceText,
     character,
-    scenes: buildScenes(title, sourceText, sceneCount, input.assets),
+    scenes,
     status: "ready",
     createdAt: now,
     updatedAt: now,

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-4o-mini"
-    openai_image_model: str = "dall-e-3"
+    openai_image_model: str = "gpt-image-1.5"
     openai_image_size: str = "1024x1024"
 
     sarvam_api_key: str | None = None
