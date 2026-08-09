@@ -3,7 +3,12 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { UserButton } from "@clerk/nextjs";
 import { api, type Lesson, type MdPart, type Scene, type SceneMediaKind } from "@/lib/api";
+import { assetTypeFromName, runMockGenerate } from "@/lib/mock-generate";
+import { saveLesson } from "@/lib/lesson-store";
+import type { LessonAsset } from "@/lib/types";
+import { MODE_LABELS } from "@/lib/types";
 
 const SAMPLE_LESSON = `# What, Where, How and When?
 
@@ -75,7 +80,7 @@ function withMediaTags(scenes: Scene[]): (Scene & { media_kind: SceneMediaKind }
   }));
 }
 
-export default function StudioPage() {
+function StudioPage() {
   const router = useRouter();
   const [title, setTitle] = useState("What, Where, How and When?");
   const [sourceText, setSourceText] = useState(SAMPLE_LESSON);
@@ -92,6 +97,10 @@ export default function StudioPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [durationMin, setDurationMin] = useState<15 | 30 | 45 | 60>(30);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishStage, setPublishStage] = useState<string | null>(null);
 
   const selectedPart = parts.find((part) => part.id === selectedPartId) ?? parts[0] ?? null;
   const tone = statusTone(status);
@@ -195,49 +204,111 @@ export default function StudioPage() {
     }
   }
 
+  async function publishInteractiveDeck() {
+    if (!lesson) return;
+    setPublishBusy(true);
+    setPublishError(null);
+    setPublishStage(null);
+    try {
+      let warned: string | null = null;
+      const assets: LessonAsset[] = [];
+      if (file) {
+        assets.push({
+          id: `asset-${Date.now().toString(36)}`,
+          name: file.name,
+          type: assetTypeFromName(file.name),
+          url: URL.createObjectURL(file),
+          size: file.size,
+        });
+      }
+      const experience = await runMockGenerate(
+        {
+          title: lesson.title || title,
+          durationMin,
+          mode: "interactive",
+          assets,
+          sourceText: lesson.source_text || sourceText,
+        },
+        (label) => setPublishStage(label),
+        (message) => {
+          warned = message;
+          setPublishError(message);
+        },
+      );
+      saveLesson(experience);
+      setStatus("Interactive deck ready");
+      // Give the teacher a beat to read why the guide is a placeholder.
+      if (warned) await new Promise((resolve) => setTimeout(resolve, 2200));
+      router.push(`/studio/${experience.id}/preview`);
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "Failed to publish deck");
+    } finally {
+      setPublishBusy(false);
+    }
+  }
+
+  const canPublish = Boolean(lesson?.scenes?.length);
+
   return (
     <div className="studio-shell mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pb-28 pt-5 sm:px-6 sm:pt-8 lg:pb-10">
       <header className="animate-fade-up mb-6 flex flex-col gap-4 sm:mb-8 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm text-[var(--accent)] transition hover:text-[var(--accent-strong)]"
-          >
-            <span aria-hidden>←</span>
-            <span className="font-[family-name:var(--font-display)] tracking-wide">GuruDroneAI</span>
-          </Link>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 text-[var(--accent)] transition hover:text-[var(--accent-strong)]"
+            >
+              <span aria-hidden>←</span>
+              <span className="font-[family-name:var(--font-display)] tracking-wide">Dashboard</span>
+            </Link>
+            <span className="text-[var(--line)]">·</span>
+            <Link
+              href="/studio/new"
+              className="text-[var(--ink-muted)] transition hover:text-[var(--accent)]"
+            >
+              New interactive lesson
+            </Link>
+            <div className="ml-auto lg:hidden">
+              <UserButton />
+            </div>
+          </div>
           <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight sm:text-4xl">
             Lesson Studio
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)] sm:text-base">
-            Upload an NCERT chapter, split it into Markdown parts, plan classroom scenes, then approve
-            them before generating presentation pages.
+            Upload an NCERT chapter, split it into Markdown parts, plan classroom scenes, approve
+            them for presentation pages, or publish an Interactive classroom deck.
           </p>
         </div>
 
-        <div
-          className={`inline-flex max-w-full items-center gap-2 self-start rounded-2xl border px-3 py-2 text-xs sm:text-sm ${
-            tone === "danger"
-              ? "border-[var(--danger)]/20 bg-[var(--danger-soft)] text-[var(--danger)]"
-              : tone === "ready"
-                ? "border-[var(--accent)]/20 bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-                : tone === "busy"
-                  ? "border-[var(--line)] bg-white/70 text-[var(--accent)]"
-                  : "border-[var(--line)] bg-white/60 text-[var(--ink-muted)]"
-          }`}
-        >
-          <span
-            className={`h-2 w-2 shrink-0 rounded-full ${
+        <div className="flex flex-col items-end gap-3 self-start">
+          <div className="hidden lg:block">
+            <UserButton />
+          </div>
+          <div
+            className={`inline-flex max-w-full items-center gap-2 rounded-2xl border px-3 py-2 text-xs sm:text-sm ${
               tone === "danger"
-                ? "bg-[var(--danger)]"
+                ? "border-[var(--danger)]/20 bg-[var(--danger-soft)] text-[var(--danger)]"
                 : tone === "ready"
-                  ? "bg-[var(--accent)]"
+                  ? "border-[var(--accent)]/20 bg-[var(--accent-soft)] text-[var(--accent-strong)]"
                   : tone === "busy"
-                    ? "animate-pulse-soft bg-[var(--accent)]"
-                    : "bg-[var(--ink-muted)]/50"
+                    ? "border-[var(--line)] bg-white/70 text-[var(--accent)]"
+                    : "border-[var(--line)] bg-white/60 text-[var(--ink-muted)]"
             }`}
-          />
-          <span className="truncate">{status}</span>
+          >
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${
+                tone === "danger"
+                  ? "bg-[var(--danger)]"
+                  : tone === "ready"
+                    ? "bg-[var(--accent)]"
+                    : tone === "busy"
+                      ? "animate-pulse-soft bg-[var(--accent)]"
+                      : "bg-[var(--ink-muted)]/50"
+              }`}
+            />
+            <span className="truncate">{status}</span>
+          </div>
         </div>
       </header>
 
@@ -612,6 +683,79 @@ export default function StudioPage() {
         </section>
       </div>
 
+      <section className="animate-fade-up mt-6 rounded-3xl border border-[var(--line)] bg-white/70 p-5 sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold tracking-tight">
+              Teacher classroom
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">
+              Turn this lesson into a shareable Interactive deck with a pixel guide character.
+              Run the pipeline first so scenes (and source text) are ready.
+            </p>
+          </div>
+          <p className="rounded-2xl bg-[var(--accent-soft)] px-3 py-1 text-xs text-[var(--accent)]">
+            {MODE_LABELS.interactive}
+          </p>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          {([15, 30, 45, 60] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setDurationMin(d)}
+              className={`rounded-2xl px-4 py-2 text-sm transition ${
+                durationMin === d
+                  ? "bg-[var(--foreground)] text-white"
+                  : "border border-[var(--line)] bg-white/80 text-[var(--foreground)]"
+              }`}
+            >
+              {d} min
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span className="rounded-2xl bg-[var(--accent)] px-4 py-2 text-sm text-white">
+            Interactive
+          </span>
+          <span
+            className="cursor-not-allowed rounded-2xl border border-[var(--line)] bg-black/[0.03] px-4 py-2 text-sm text-[var(--ink-muted)] opacity-70"
+            title="Coming soon"
+          >
+            Gamified · Soon
+          </span>
+          <span
+            className="cursor-not-allowed rounded-2xl border border-[var(--line)] bg-black/[0.03] px-4 py-2 text-sm text-[var(--ink-muted)] opacity-70"
+            title="Coming soon"
+          >
+            Quiz · Soon
+          </span>
+        </div>
+
+        {publishStage ? (
+          <p className="mt-4 text-sm text-[var(--accent)]">{publishStage}</p>
+        ) : null}
+        {publishError ? <p className="mt-4 text-sm text-[var(--danger)]">{publishError}</p> : null}
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={publishBusy || !canPublish}
+            onClick={publishInteractiveDeck}
+            className="rounded-2xl bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:opacity-45"
+          >
+            {publishBusy ? "Generating…" : "Generate interactive classroom"}
+          </button>
+          {!canPublish ? (
+            <p className="self-center text-xs text-[var(--ink-muted)]">
+              Available after Director scenes exist.
+            </p>
+          ) : null}
+        </div>
+      </section>
+
       {/* Mobile sticky actions */}
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[rgba(244,248,245,0.92)] px-4 py-3 backdrop-blur-md lg:hidden">
         <div className="mx-auto flex max-w-7xl gap-2">
@@ -636,6 +780,8 @@ export default function StudioPage() {
     </div>
   );
 }
+
+export default StudioPage;
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (

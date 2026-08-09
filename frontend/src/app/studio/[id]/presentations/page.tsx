@@ -6,8 +6,8 @@ import { useParams } from "next/navigation";
 import { api, assetUrl, type Lesson, type PresentationPage } from "@/lib/api";
 
 export default function PresentationsPage() {
-  const params = useParams<{ lessonId: string }>();
-  const lessonId = params.lessonId;
+  const params = useParams<{ id: string }>();
+  const lessonId = params.id;
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);

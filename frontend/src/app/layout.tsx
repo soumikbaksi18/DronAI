@@ -1,16 +1,23 @@
 import type { Metadata } from "next";
-import { Fraunces, Manrope, IBM_Plex_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { IBM_Plex_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const display = Fraunces({
-  variable: "--font-display",
-  subsets: ["latin"],
-  axes: ["SOFT", "WONK", "opsz"],
-});
-
-const body = Manrope({
-  variable: "--font-body",
-  subsets: ["latin"],
+// Satoshi is the primary editorial grotesk for display, headings, body and UI.
+const satoshi = localFont({
+  variable: "--font-satoshi",
+  display: "swap",
+  src: [
+    { path: "../../satoshi/Satoshi-Regular.otf", weight: "400", style: "normal" },
+    { path: "../../satoshi/Satoshi-Italic.otf", weight: "400", style: "italic" },
+    { path: "../../satoshi/Satoshi-Medium.otf", weight: "500", style: "normal" },
+    { path: "../../satoshi/Satoshi-MediumItalic.otf", weight: "500", style: "italic" },
+    { path: "../../satoshi/Satoshi-Bold.otf", weight: "700", style: "normal" },
+    { path: "../../satoshi/Satoshi-BoldItalic.otf", weight: "700", style: "italic" },
+    { path: "../../satoshi/Satoshi-Black.otf", weight: "900", style: "normal" },
+    { path: "../../satoshi/Satoshi-BlackItalic.otf", weight: "900", style: "italic" },
+  ],
 });
 
 const mono = IBM_Plex_Mono({
@@ -29,11 +36,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
+      className={`${satoshi.variable} ${mono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        {children}
+        <ClerkProvider>{children}</ClerkProvider>
       </body>
     </html>
   );
