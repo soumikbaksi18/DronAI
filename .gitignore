@@ -45,3 +45,5 @@ htmlcov/
 uploads/
 generated/
 *.sqlite3
+venv/
+outputs/
