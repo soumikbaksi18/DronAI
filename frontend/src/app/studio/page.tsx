@@ -19,7 +19,7 @@ Dates are a convenient way to keep track of events, but they must be understood 
 Manuscripts were often written on palm leaf or birch bark. Inscriptions are writings on hard surfaces such as stone or metal.`;
 
 type InputMode = "upload" | "paste";
-type ResultTab = "parts" | "scenes" | "report" | "command";
+type ResultTab = "parts" | "scenes" | "command";
 
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
@@ -30,7 +30,12 @@ function formatBytes(size: number) {
 function statusTone(status: string) {
   if (status === "Failed") return "danger";
   if (status === "Idle") return "muted";
-  if (status.startsWith("Ready") || status.includes("ready") || status.includes("handled")) {
+  if (
+    status.startsWith("Ready") ||
+    status.includes("ready") ||
+    status.includes("handled") ||
+    status.includes("Approved")
+  ) {
     return "ready";
   }
   return "busy";
@@ -40,12 +45,12 @@ export default function StudioPage() {
   const [title, setTitle] = useState("What, Where, How and When?");
   const [sourceText, setSourceText] = useState(SAMPLE_LESSON);
   const [file, setFile] = useState<File | null>(null);
+  const [sceneCount, setSceneCount] = useState(8);
   const [inputMode, setInputMode] = useState<InputMode>("upload");
   const [resultTab, setResultTab] = useState<ResultTab>("parts");
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [parts, setParts] = useState<MdPart[]>([]);
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [commandResult, setCommandResult] = useState<Record<string, unknown> | null>(null);
   const [command, setCommand] = useState("Guru, explain this in Hindi.");
   const [status, setStatus] = useState<string>("Idle");
@@ -56,13 +61,14 @@ export default function StudioPage() {
   const selectedPart = parts.find((part) => part.id === selectedPartId) ?? parts[0] ?? null;
   const tone = statusTone(status);
   const canRun = Boolean(file || (title.trim() && sourceText.trim()));
+  const canApprove = Boolean(lesson?.scenes?.length && !lesson.scenes_approved);
 
   const workflowSteps = useMemo(
     () => [
       { id: "1", label: "Ingest" },
       { id: "2", label: "Split MD" },
-      { id: "3", label: "Director" },
-      { id: "4", label: "Simulate" },
+      { id: "3", label: "Plan scenes" },
+      { id: "4", label: "Approve" },
     ],
     [],
   );
@@ -72,10 +78,9 @@ export default function StudioPage() {
     if (next) setInputMode("upload");
   }
 
-  async function ingestAndPlan(simulateAfter = true) {
+  async function ingestAndPlan() {
     setBusy(true);
     setError(null);
-    setReport(null);
     setCommandResult(null);
     setResultTab("parts");
 
@@ -87,6 +92,7 @@ export default function StudioPage() {
           title: title.trim() || undefined,
           subject: "History",
           language: "en",
+          scene_count: sceneCount,
         });
       } else {
         setStatus("Parsing Markdown into parts…");
@@ -95,6 +101,7 @@ export default function StudioPage() {
           source_text: sourceText,
           subject: "History",
           language: "en",
+          scene_count: sceneCount,
         });
       }
 
@@ -103,23 +110,32 @@ export default function StudioPage() {
       setSelectedPartId(created.md_parts?.[0]?.id ?? null);
       setTitle(created.title);
 
-      setStatus("Classroom Director planning scenes…");
-      const generated = await api.generateLesson(created.id);
+      setStatus(`Planning ${sceneCount} classroom scenes…`);
+      const generated = await api.generateLesson(created.id, sceneCount);
       setLesson(generated);
       setParts(generated.md_parts ?? created.md_parts ?? []);
-
-      if (simulateAfter) {
-        setStatus("Simulating classroom…");
-        const simulation = await api.simulateClassroom(generated.id);
-        setReport(simulation);
-        setStatus("Ready — MD parts + scenes available");
-        setResultTab("scenes");
-      } else {
-        setStatus("Scenes ready from MD parts");
-        setResultTab("scenes");
-      }
+      setStatus(`Scenes ready (${generated.scenes?.length ?? 0}) — review & approve`);
+      setResultTab("scenes");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      setStatus("Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveScenes() {
+    if (!lesson) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setStatus("Approving scenes…");
+      const approved = await api.approveScenes(lesson.id);
+      setLesson(approved);
+      setStatus("Approved — ready for Video generation page");
+      setResultTab("scenes");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Approve failed");
       setStatus("Failed");
     } finally {
       setBusy(false);
@@ -159,8 +175,8 @@ export default function StudioPage() {
             Lesson Studio
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)] sm:text-base">
-            Upload an NCERT chapter, split it into Markdown parts, then hand them to the Classroom
-            Director for scenes.
+            Upload an NCERT chapter, split it into Markdown parts, plan classroom scenes, then approve
+            them before moving to Video generation.
           </p>
         </div>
 
@@ -221,6 +237,26 @@ export default function StudioPage() {
               className="w-full rounded-2xl border border-[var(--line)] bg-white/80 px-3.5 py-2.5 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white"
               placeholder="e.g. The French Revolution"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium">Number of scenes</span>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={1}
+                max={24}
+                step={1}
+                value={sceneCount}
+                onChange={(e) =>
+                  setSceneCount(Math.max(1, Math.min(24, Number(e.target.value) || 1)))
+                }
+                className="w-28 rounded-2xl border border-[var(--line)] bg-white/80 px-3.5 py-2.5 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white"
+              />
+              <p className="text-xs leading-5 text-[var(--ink-muted)]">
+                Classroom scenes only on this page. Video generation comes after approval.
+              </p>
+            </div>
           </label>
 
           <div className="flex rounded-2xl border border-[var(--line)] bg-white/50 p-1">
@@ -315,19 +351,24 @@ export default function StudioPage() {
             <button
               type="button"
               disabled={busy || !canRun || (inputMode === "upload" && !file)}
-              onClick={() => ingestAndPlan(true)}
+              onClick={() => ingestAndPlan()}
               className="rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {busy ? "Running pipeline…" : "Upload → Split → Direct → Simulate"}
+              {busy ? "Planning scenes…" : "Upload → Split → Plan scenes"}
             </button>
             <button
               type="button"
-              disabled={busy || !canRun || (inputMode === "upload" && !file)}
-              onClick={() => ingestAndPlan(false)}
+              disabled={busy || !canApprove}
+              onClick={() => approveScenes()}
               className="rounded-2xl border border-[var(--line)] bg-white/80 px-5 py-3 text-sm font-medium transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
             >
-              Split + Director only
+              {lesson?.scenes_approved ? "Scenes approved" : "Approve scenes"}
             </button>
+            {lesson?.scenes_approved ? (
+              <p className="text-xs leading-5 text-[var(--ink-muted)]">
+                Next step: Video generation page (coming next).
+              </p>
+            ) : null}
           </div>
         </section>
 
@@ -338,7 +379,6 @@ export default function StudioPage() {
               [
                 ["parts", `MD parts${parts.length ? ` (${parts.length})` : ""}`],
                 ["scenes", `Scenes${lesson?.scenes?.length ? ` (${lesson.scenes.length})` : ""}`],
-                ["report", "Readiness"],
                 ["command", "Live command"],
               ] as const
             ).map(([tab, label]) => (
@@ -473,26 +513,7 @@ export default function StudioPage() {
                 ) : (
                   <EmptyState
                     title="No scenes yet"
-                    body="Run Split + Director to generate classroom scenes from your MD parts."
-                  />
-                )}
-              </div>
-            ) : null}
-
-            {resultTab === "report" ? (
-              <div className="flex h-full min-h-[28rem] flex-col">
-                <div className="border-b border-[var(--line)] px-4 py-3 sm:px-5">
-                  <h2 className="font-[family-name:var(--font-display)] text-lg">Readiness report</h2>
-                  <p className="text-xs text-[var(--ink-muted)]">Simulation output from the classroom loop</p>
-                </div>
-                {report ? (
-                  <pre className="md-preview studio-scroll max-h-[34rem] overflow-auto p-4 text-[12px] leading-6 text-[var(--foreground)] sm:p-5">
-                    {JSON.stringify(report, null, 2)}
-                  </pre>
-                ) : (
-                  <EmptyState
-                    title="No report yet"
-                    body="Run the full pipeline to simulate the classroom and fill this report."
+                    body="Run Upload → Split → Plan scenes to generate classroom scenes from your MD parts."
                   />
                 )}
               </div>
@@ -545,18 +566,18 @@ export default function StudioPage() {
           <button
             type="button"
             disabled={busy || !canRun || (inputMode === "upload" && !file)}
-            onClick={() => ingestAndPlan(true)}
+            onClick={() => ingestAndPlan()}
             className="flex-1 rounded-2xl bg-[var(--accent)] px-3 py-3 text-sm font-medium text-white disabled:opacity-45"
           >
-            {busy ? "Running…" : "Full pipeline"}
+            {busy ? "Planning…" : "Plan scenes"}
           </button>
           <button
             type="button"
-            disabled={busy || !canRun || (inputMode === "upload" && !file)}
-            onClick={() => ingestAndPlan(false)}
+            disabled={busy || !canApprove}
+            onClick={() => approveScenes()}
             className="rounded-2xl border border-[var(--line)] bg-white px-3 py-3 text-sm font-medium disabled:opacity-45"
           >
-            Split only
+            Approve
           </button>
         </div>
       </div>

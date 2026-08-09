@@ -23,6 +23,21 @@ class LessonCreateRequest(BaseModel):
     subject: str | None = None
     grade_level: str | None = None
     language: str = "en"
+    scene_count: int | None = Field(
+        default=None,
+        ge=1,
+        le=24,
+        description="Optional requested number of classroom scenes",
+    )
+
+
+class GenerateScenesRequest(BaseModel):
+    scene_count: int = Field(
+        default=8,
+        ge=1,
+        le=24,
+        description="How many classroom scenes to plan from the chapter (video generation comes later)",
+    )
 
 
 class MdPart(BaseModel):
@@ -62,6 +77,9 @@ class Lesson(BaseModel):
     subject: str | None = None
     grade_level: str | None = None
     language: str = "en"
+    target_scene_count: int | None = None
+    scenes_approved: bool = False
+    director_notes: list[str] = Field(default_factory=list)
     status: LessonStatus = LessonStatus.DRAFT
     md_parts: list[MdPart] = Field(default_factory=list)
     parts_dir: str | None = None

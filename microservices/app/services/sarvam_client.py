@@ -74,7 +74,7 @@ class SarvamClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        async with httpx.AsyncClient(timeout=90.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(
                 f"{self.base_url}/v1/chat/completions",
                 headers=self._headers(),

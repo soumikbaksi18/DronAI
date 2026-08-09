@@ -3,12 +3,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from app.models.schemas import Lesson, LessonCreateRequest, LessonStatus, MdPart, Scene, SlideContent
+from app.models.schemas import (
+    GenerateScenesRequest,
+    Lesson,
+    LessonCreateRequest,
+    LessonStatus,
+    MdPart,
+)
 from app.services.chapter_splitter import split_into_md_parts
 from app.services.document_extractor import extract_text, normalize_extension
-from app.services.genai_client import GenAIClient
 from app.services.lesson_files import save_md_parts, save_source_file
 from app.services.lesson_store import lesson_store
+from app.services.scene_planner import clamp_scene_count, plan_scenes_for_lesson
 
 router = APIRouter(prefix="/v1/lessons", tags=["lessons"])
 
@@ -22,20 +28,6 @@ def _ensure_parts(lesson: Lesson) -> list[MdPart]:
     lesson.status = LessonStatus.PARSED
     lesson_store.update(lesson)
     return parts
-
-
-def _scene_from_dict(data: dict) -> Scene:
-    slide_data = data.get("slide")
-    slide = SlideContent(**slide_data) if isinstance(slide_data, dict) else None
-    return Scene(
-        id=data["id"],
-        part_id=data.get("part_id"),
-        title=data["title"],
-        slide=slide,
-        narration=data.get("narration", ""),
-        visual_prompt=data.get("visual_prompt"),
-        questions=data.get("questions") or [],
-    )
 
 
 @router.get("", response_model=list[Lesson])
@@ -53,6 +45,7 @@ async def create_lesson(payload: LessonCreateRequest) -> Lesson:
         subject=payload.subject,
         grade_level=payload.grade_level,
         language=payload.language,
+        target_scene_count=payload.scene_count,
         status=LessonStatus.PARSING,
     )
     lesson_store.create(lesson)
@@ -71,6 +64,7 @@ async def upload_lesson(
     subject: str | None = Form(default=None),
     grade_level: str | None = Form(default=None),
     language: str = Form(default="en"),
+    scene_count: int | None = Form(default=None),
 ) -> Lesson:
     """Upload a PDF / Markdown / TXT chapter, extract text, and split into MD parts."""
     filename = file.filename or "upload.txt"
@@ -80,7 +74,7 @@ async def upload_lesson(
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
     try:
-        source_text = extract_text(filename, data)
+        source_text, extractor = await extract_text(filename, data, language=language)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -91,10 +85,11 @@ async def upload_lesson(
         title=lesson_title,
         source_text=source_text,
         source_filename=filename,
-        source_type=ext.lstrip(".") or "text",
+        source_type=f"{ext.lstrip('.') or 'text'}+{extractor}",
         subject=subject,
         grade_level=grade_level,
         language=language,
+        target_scene_count=scene_count,
         status=LessonStatus.PARSING,
     )
     lesson_store.create(lesson)
@@ -141,32 +136,57 @@ async def reparse_lesson(lesson_id: UUID) -> Lesson:
 
 
 @router.post("/{lesson_id}/generate", response_model=Lesson)
-async def generate_lesson(lesson_id: UUID) -> Lesson:
-    """Ask the Classroom Director to build scenes from MD parts."""
+async def generate_lesson(
+    lesson_id: UUID,
+    payload: GenerateScenesRequest = GenerateScenesRequest(),
+) -> Lesson:
+    """Plan classroom scenes in-backend from MD parts + requested scene count.
+
+    Uses Python packing + Sarvam/OpenAI. Does not call the GenAI microservice.
+    Video generation is a later step after scenes are approved.
+    """
     lesson = lesson_store.get(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
 
+    scene_count = payload.scene_count
     parts = _ensure_parts(lesson)
     lesson_store.set_status(lesson_id, LessonStatus.GENERATING)
 
-    genai = GenAIClient()
     try:
-        result = await genai.plan_scenes(
-            {
-                "title": lesson.title,
-                "subject": lesson.subject,
-                "grade_level": lesson.grade_level,
-                "language": lesson.language,
-                "parts": [part.model_dump() for part in parts],
-            }
+        scenes, quiz, notes = await plan_scenes_for_lesson(
+            title=lesson.title,
+            parts=parts,
+            scene_count=scene_count,
+            subject=lesson.subject,
+            grade_level=lesson.grade_level,
+            language=lesson.language,
         )
+    except ValueError as exc:
+        lesson_store.set_status(lesson_id, LessonStatus.PARSED)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         lesson_store.set_status(lesson_id, LessonStatus.PARSED)
-        raise HTTPException(status_code=502, detail=f"GenAI service error: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Scene planning failed: {exc}") from exc
 
     lesson = lesson_store.get(lesson_id) or lesson
-    lesson.scenes = [_scene_from_dict(scene) for scene in result.get("scenes", [])]
-    lesson.quiz = result.get("quiz", [])
+    lesson.target_scene_count = clamp_scene_count(scene_count)
+    lesson.scenes = scenes
+    lesson.quiz = quiz
+    lesson.director_notes = notes
+    lesson.scenes_approved = False
     lesson.status = LessonStatus.READY
+    return lesson_store.update(lesson)
+
+
+@router.post("/{lesson_id}/approve-scenes", response_model=Lesson)
+async def approve_scenes(lesson_id: UUID) -> Lesson:
+    """Mark planned scenes as approved — gate before Video generation page."""
+    lesson = lesson_store.get(lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    if not lesson.scenes:
+        raise HTTPException(status_code=400, detail="Plan scenes before approving")
+
+    lesson.scenes_approved = True
     return lesson_store.update(lesson)

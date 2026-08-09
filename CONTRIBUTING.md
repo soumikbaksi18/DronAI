@@ -13,7 +13,10 @@ genai-microservices/   FastAPI agent services (generate / simulate / director)
 ## Getting started
 
 1. Fork / clone the repo
-2. Copy `.env.example` → `.env` (and `frontend/.env.local` for `NEXT_PUBLIC_API_URL`)
+2. Copy per-service env files (no root `.env`):
+   - `backend/.env.example` → `backend/.env`
+   - `microservices/.env.example` → `microservices/.env`
+   - `frontend/.env.example` → `frontend/.env.local`
 3. Start services (see root `README.md`)
 4. Pick an area to work on
 
@@ -28,8 +31,8 @@ genai-microservices/   FastAPI agent services (generate / simulate / director)
 ### Lesson intake → Director handoff
 
 1. Backend `POST /v1/lessons/upload` extracts PDF/MD and splits into `uploads/<lesson_id>/parts/*.md`
-2. Backend `POST /v1/lessons/{id}/generate` sends those parts to GenAI `POST /v1/director/plan-scenes`
-3. Director returns scenes with `slide`, `visual_prompt`, `narration`, grounded by `part_id`
+2. Backend `POST /v1/lessons/{id}/generate` plans scenes in-backend from MD parts + teacher video length (OpenAI/Sarvam)
+3. GenAI microservice is used for simulation / live classroom / speech — not for PDF→scenes
 
 ## Local workflow
 
@@ -57,5 +60,5 @@ Core loop endpoints:
 ## Before you open a PR
 
 - [ ] Services still boot (`backend`, `genai-microservices`, `frontend`)
-- [ ] New env vars documented in `.env.example`
+- [ ] New env vars documented in the relevant `*/.env.example`
 - [ ] No secrets committed

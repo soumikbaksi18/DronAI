@@ -20,7 +20,7 @@ async def text_to_speech(payload: TTSRequest) -> dict:
     if not settings.has_sarvam:
         raise HTTPException(
             status_code=503,
-            detail="SARVAM_API_KEY is not configured. Add it to .env from https://dashboard.sarvam.ai",
+            detail="SARVAM_API_KEY is not configured. Add it to microservices/.env from https://dashboard.sarvam.ai",
         )
     try:
         result = await SarvamClient().text_to_speech(
@@ -49,7 +49,7 @@ async def speech_to_text(
     if not settings.has_sarvam:
         raise HTTPException(
             status_code=503,
-            detail="SARVAM_API_KEY is not configured. Add it to .env from https://dashboard.sarvam.ai",
+            detail="SARVAM_API_KEY is not configured. Add it to microservices/.env from https://dashboard.sarvam.ai",
         )
     data = await file.read()
     if not data:

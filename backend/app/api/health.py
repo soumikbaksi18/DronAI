@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.core.config import get_settings
 from app.models.schemas import HealthResponse
 from app.services.genai_client import GenAIClient
 
@@ -13,6 +14,7 @@ async def health() -> HealthResponse:
 
 @router.get("/health/dependencies")
 async def health_dependencies() -> dict:
+    settings = get_settings()
     genai = GenAIClient()
     try:
         genai_health = await genai.health()
@@ -23,5 +25,17 @@ async def health_dependencies() -> dict:
 
     return {
         "backend": "ok",
+        "scene_planner": {
+            "sarvam": settings.has_sarvam,
+            "openai": settings.has_openai,
+            "preferred": (
+                "sarvam" if settings.has_sarvam else "openai" if settings.has_openai else "heuristic"
+            ),
+            "seconds_per_scene": settings.seconds_per_scene,
+        },
+        "sarvam": {
+            "configured": settings.has_sarvam,
+            "document_ai": settings.use_sarvam_document_ai and settings.has_sarvam,
+        },
         "genai_microservices": {"status": genai_status, "details": genai_health},
     }

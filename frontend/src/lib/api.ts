@@ -60,6 +60,9 @@ export type Lesson = {
   source_filename?: string | null;
   source_type?: string | null;
   status: string;
+  target_scene_count?: number | null;
+  scenes_approved?: boolean;
+  director_notes?: string[];
   md_parts: MdPart[];
   parts_dir?: string | null;
   scenes: Scene[];
@@ -74,48 +77,38 @@ export const api = {
     subject?: string;
     grade_level?: string;
     language?: string;
+    scene_count?: number;
   }) =>
     request<Lesson>("/v1/lessons", {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  uploadLesson: (file: File, meta?: { title?: string; subject?: string; language?: string }) => {
+  uploadLesson: (
+    file: File,
+    meta?: { title?: string; subject?: string; language?: string; scene_count?: number },
+  ) => {
     const form = new FormData();
     form.append("file", file);
     if (meta?.title) form.append("title", meta.title);
     if (meta?.subject) form.append("subject", meta.subject);
     if (meta?.language) form.append("language", meta.language);
+    if (meta?.scene_count != null) form.append("scene_count", String(meta.scene_count));
     return request<Lesson>("/v1/lessons/upload", {
       method: "POST",
       body: form,
     });
   },
   getLessonParts: (lessonId: string) => request<MdPart[]>(`/v1/lessons/${lessonId}/parts`),
-  generateLesson: (lessonId: string) =>
-    request<Lesson>(`/v1/lessons/${lessonId}/generate`, { method: "POST" }),
-  simulateClassroom: (lessonId: string) =>
-    request<Record<string, unknown>>("/v1/classroom/simulate", {
+  generateLesson: (lessonId: string, sceneCount = 8) =>
+    request<Lesson>(`/v1/lessons/${lessonId}/generate`, {
       method: "POST",
-      body: JSON.stringify({ lesson_id: lessonId }),
+      body: JSON.stringify({ scene_count: sceneCount }),
     }),
+  approveScenes: (lessonId: string) =>
+    request<Lesson>(`/v1/lessons/${lessonId}/approve-scenes`, { method: "POST" }),
   classroomCommand: (lessonId: string, command: string, language = "en") =>
     request<Record<string, unknown>>("/v1/classroom/command", {
       method: "POST",
       body: JSON.stringify({ lesson_id: lessonId, command, language }),
     }),
-  textToSpeech: (text: string, language = "en", speaker?: string) =>
-    request<Record<string, unknown>>("/v1/speech/tts", {
-      method: "POST",
-      body: JSON.stringify({ text, language, speaker }),
-    }),
-  speechToText: (file: File, language?: string, mode = "transcribe") => {
-    const form = new FormData();
-    form.append("file", file);
-    form.append("mode", mode);
-    if (language) form.append("language", language);
-    return request<Record<string, unknown>>("/v1/speech/stt", {
-      method: "POST",
-      body: form,
-    });
-  },
 };

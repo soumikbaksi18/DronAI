@@ -6,7 +6,7 @@ Next.js (App Router) UI for GuruDroneAI.
 
 ```bash
 cd frontend
-cp ../.env.example .env.local   # or set NEXT_PUBLIC_API_URL manually
+cp .env.example .env.local   # sets NEXT_PUBLIC_API_URL
 npm install
 npm run dev
 ```

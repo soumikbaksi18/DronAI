@@ -20,7 +20,7 @@ class GenAIClient:
 
     async def plan_scenes(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Classroom Director: MD parts → scenes (slides / visuals / narration)."""
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.post(f"{self.base_url}/v1/director/plan-scenes", json=payload)
             response.raise_for_status()
             return response.json()
