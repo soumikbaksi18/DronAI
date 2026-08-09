@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { DeckPlayer } from "@/components/DeckPlayer";
-import { getLessonBySlug } from "@/lib/lesson-store";
+import { withPresentationImages } from "@/lib/mock-generate";
+import { getLessonBySlug, saveLesson } from "@/lib/lesson-store";
 import type { LessonExperience } from "@/lib/types";
 
 export default function PublicDeckPage() {
@@ -12,7 +13,14 @@ export default function PublicDeckPage() {
   const [lesson, setLesson] = useState<LessonExperience | null | undefined>(undefined);
 
   useEffect(() => {
-    setLesson(getLessonBySlug(params.slug));
+    const stored = getLessonBySlug(params.slug);
+    if (!stored) {
+      setLesson(null);
+      return;
+    }
+    const hydrated = withPresentationImages(stored);
+    if (hydrated !== stored) saveLesson(hydrated);
+    setLesson(hydrated);
   }, [params.slug]);
 
   if (lesson === undefined) {

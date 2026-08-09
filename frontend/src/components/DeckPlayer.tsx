@@ -52,16 +52,20 @@ export function DeckPlayer({ lesson, showChrome = true }: Props) {
     setActiveHotspot(hs);
     setPose("point");
     setSpeech(hs.reply);
-    // Stand just below the hotspot so the guide gestures at it without hiding it.
-    setTarget({ x: hs.x, y: hs.y + 18 });
+    // Stay in the bottom-right presenter pocket; face toward the tapped hotspot.
+    setTarget({
+      x: hs.x < 50 ? 70 : 88,
+      y: 82,
+    });
   }
 
   function walkTo(e: MouseEvent<HTMLElement>) {
     const bounds = e.currentTarget.getBoundingClientRect();
-    setTarget({
-      x: ((e.clientX - bounds.left) / bounds.width) * 100,
-      y: ((e.clientY - bounds.top) / bounds.height) * 100,
-    });
+    const x = ((e.clientX - bounds.left) / bounds.width) * 100;
+    const y = ((e.clientY - bounds.top) / bounds.height) * 100;
+    // Only accept walk targets inside the bottom-right pocket of the slide.
+    if (x < 58 || y < 62) return;
+    setTarget({ x, y });
     setPose("idle");
   }
 
@@ -104,29 +108,41 @@ export function DeckPlayer({ lesson, showChrome = true }: Props) {
           onClick={walkTo}
           className="relative flex min-h-[60vh] flex-1 flex-col overflow-hidden rounded-3xl bg-[linear-gradient(160deg,#e7f2ec_0%,#f6f3ec_45%,#efe6d6_100%)] ring-1 ring-black/5"
         >
-          <div className="relative flex flex-1 flex-col justify-between p-8 sm:p-12">
-            <div className="max-w-2xl">
+          <div className="relative grid flex-1 grid-cols-1 gap-6 p-6 sm:p-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(240px,0.95fr)] lg:items-stretch lg:gap-8">
+            <div className="relative z-10 flex min-w-0 flex-col">
               <p className="mb-3 text-xs font-semibold tracking-[0.14em] text-[var(--accent)] uppercase">
                 {scene.type}
               </p>
-              <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:text-3xl lg:text-4xl">
                 {scene.title}
               </h1>
-              <p className="mt-5 max-w-xl text-base leading-7 text-[var(--ink-muted)] sm:text-lg sm:leading-8">
+              <p className="mt-5 max-w-xl whitespace-pre-line text-base leading-7 text-[var(--ink-muted)] sm:text-lg sm:leading-8">
                 {scene.body}
               </p>
             </div>
 
-            {media ? (
-              <div className="mt-8 max-w-md overflow-hidden rounded-2xl bg-black/5 ring-1 ring-black/5">
-                {media.type === "video" ? (
-                  <video src={media.url} controls className="max-h-48 w-full object-cover" />
+            <div className="relative min-h-[220px] overflow-hidden rounded-2xl bg-black/[0.04] ring-1 ring-black/5 lg:min-h-0">
+              {media ? (
+                media.type === "video" ? (
+                  <video
+                    src={media.url}
+                    controls
+                    className="h-full max-h-[420px] w-full object-cover lg:absolute lg:inset-0 lg:max-h-none"
+                  />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={media.url} alt={media.name} className="max-h-48 w-full object-cover" />
-                )}
-              </div>
-            ) : null}
+                  <img
+                    src={media.url}
+                    alt={media.name}
+                    className="h-full max-h-[420px] w-full object-cover lg:absolute lg:inset-0 lg:max-h-none"
+                  />
+                )
+              ) : (
+                <div className="flex h-full min-h-[220px] items-center justify-center px-6 text-center text-sm text-[var(--ink-muted)] lg:absolute lg:inset-0">
+                  No slide image yet — approve &amp; regenerate presentations, then publish again.
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Both layers measure against the article, so a hotspot's percent

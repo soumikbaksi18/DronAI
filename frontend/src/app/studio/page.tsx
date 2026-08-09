@@ -1,12 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
-import { api, type Lesson, type MdPart, type Scene, type SceneMediaKind } from "@/lib/api";
+import { api, assetUrl, type Lesson, type MdPart, type Scene, type SceneMediaKind } from "@/lib/api";
 import { assetTypeFromName, runMockGenerate } from "@/lib/mock-generate";
 import { saveLesson } from "@/lib/lesson-store";
+import {
+  getActiveStitchedDeck,
+  getStitchedDeck,
+  type StitchedDeck,
+} from "@/lib/studio-deck-store";
 import type { LessonAsset } from "@/lib/types";
 import { MODE_LABELS } from "@/lib/types";
 
@@ -80,20 +85,33 @@ function withMediaTags(scenes: Scene[]): (Scene & { media_kind: SceneMediaKind }
   }));
 }
 
+function bootStitchedDeck(): StitchedDeck | null {
+  if (typeof window === "undefined") return null;
+  const approvedId = new URLSearchParams(window.location.search).get("approved");
+  return approvedId ? getStitchedDeck(approvedId) : getActiveStitchedDeck();
+}
+
 function StudioPage() {
   const router = useRouter();
-  const [title, setTitle] = useState("What, Where, How and When?");
-  const [sourceText, setSourceText] = useState(SAMPLE_LESSON);
+  const boot = useMemo(() => bootStitchedDeck(), []);
+  const [title, setTitle] = useState(boot?.title ?? "What, Where, How and When?");
+  const [sourceText, setSourceText] = useState(boot?.source_text || SAMPLE_LESSON);
   const [file, setFile] = useState<File | null>(null);
   const [sceneCount, setSceneCount] = useState(8);
   const [inputMode, setInputMode] = useState<InputMode>("upload");
-  const [resultTab, setResultTab] = useState<ResultTab>("parts");
-  const [lesson, setLesson] = useState<Lesson | null>(null);
-  const [parts, setParts] = useState<MdPart[]>([]);
-  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const [resultTab, setResultTab] = useState<ResultTab>(boot ? "scenes" : "parts");
+  const [lesson, setLesson] = useState<Lesson | null>(boot);
+  const stitchedDeck = boot;
+  const [parts, setParts] = useState<MdPart[]>(boot?.md_parts ?? []);
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(boot?.md_parts?.[0]?.id ?? null);
   const [commandResult, setCommandResult] = useState<Record<string, unknown> | null>(null);
   const [command, setCommand] = useState("Guru, explain this in Hindi.");
-  const [status, setStatus] = useState<string>("Idle");
+  const [status, setStatus] = useState<string>(() => {
+    if (!boot) return "Idle";
+    const images = boot.presentation_pages.filter((p) => p.image_url).length;
+    const videos = boot.presentation_pages.filter((p) => p.media_kind === "video").length;
+    return `Approved presentation ready · ${boot.presentation_pages.length} pages · ${images} images · ${videos} video slots`;
+  });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -221,6 +239,8 @@ function StudioPage() {
           size: file.size,
         });
       }
+      const presentationPages =
+        stitchedDeck?.presentation_pages ?? lesson.presentation_pages ?? [];
       const experience = await runMockGenerate(
         {
           title: lesson.title || title,
@@ -228,6 +248,8 @@ function StudioPage() {
           mode: "interactive",
           assets,
           sourceText: lesson.source_text || sourceText,
+          presentationPages,
+          backendScenes: lesson.scenes?.length ? lesson.scenes : undefined,
         },
         (label) => setPublishStage(label),
         (message) => {
@@ -683,6 +705,65 @@ function StudioPage() {
         </section>
       </div>
 
+      {stitchedDeck?.presentation_pages?.length ? (
+        <section className="animate-fade-up mt-6 rounded-3xl border border-[var(--accent)]/25 bg-[var(--accent-soft)]/40 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
+                Approved deck
+              </p>
+              <h2 className="mt-1 font-[family-name:var(--font-display)] text-xl font-semibold tracking-tight">
+                Stitched presentation ready
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">
+                Saved in this browser with presentation pages, OpenAI images, and video placeholders.
+                Reopen pages anytime or continue to the interactive classroom.
+              </p>
+              <p className="mt-3 text-xs text-[var(--ink-muted)]">
+                {stitchedDeck.presentation_pages.length} pages ·{" "}
+                {stitchedDeck.presentation_pages.filter((p) => p.image_url).length} images ·{" "}
+                {stitchedDeck.presentation_pages.filter((p) => p.media_kind === "video").length}{" "}
+                video slots
+              </p>
+            </div>
+            <Link
+              href={`/studio/${stitchedDeck.id}/presentations`}
+              className="shrink-0 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+            >
+              Open presentation pages
+            </Link>
+          </div>
+          <ul className="studio-scroll mt-5 flex gap-3 overflow-x-auto pb-1">
+            {stitchedDeck.presentation_pages.map((page, index) => {
+              const thumb = assetUrl(page.image_url);
+              return (
+                <li
+                  key={page.scene_id}
+                  className="w-40 shrink-0 overflow-hidden rounded-2xl border border-[var(--line)] bg-white/80"
+                >
+                  <div className="aspect-[4/3] bg-black/[0.03]">
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumb} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-3 text-center text-[10px] text-[var(--ink-muted)]">
+                        {page.media_kind === "video" ? "Video slot" : "No image"}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-2.5">
+                    <p className="font-mono text-[10px] text-[var(--ink-muted)]">
+                      {String(index + 1).padStart(2, "0")}
+                    </p>
+                    <p className="truncate text-xs font-medium">{page.headline || page.title}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="animate-fade-up mt-6 rounded-3xl border border-[var(--line)] bg-white/70 p-5 sm:p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -781,7 +862,19 @@ function StudioPage() {
   );
 }
 
-export default StudioPage;
+export default function StudioPageRoute() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 items-center justify-center p-10 text-sm text-[var(--ink-muted)]">
+          Loading Studio…
+        </div>
+      }
+    >
+      <StudioPage />
+    </Suspense>
+  );
+}
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (

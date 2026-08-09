@@ -16,8 +16,8 @@ type Props = {
   className?: string;
 };
 
-/** The strip of the slide the guide is allowed to roam, in percent. */
-const ROAM = { minX: 10, maxX: 90, minY: 54, maxY: 86 };
+/** Bottom-right pocket of the PPT slide the guide is allowed to roam, in percent. */
+const ROAM = { minX: 62, maxX: 94, minY: 68, maxY: 93 };
 const WALK_SPEED = 145; // css px per second
 const STEP_LENGTH = 26; // px of travel between walk frames
 const ARRIVE_EPSILON = 3;
@@ -138,7 +138,8 @@ export function CharacterStage({
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = container.clientWidth;
       height = container.clientHeight;
-      charHeight = Math.max(92, Math.min(190, height * 0.3));
+      // Keep the guide small enough to live inside the bottom-right image pocket.
+      charHeight = Math.max(84, Math.min(150, height * 0.22));
 
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
@@ -152,7 +153,7 @@ export function CharacterStage({
 
       const state = motion.current;
       if (!state.seeded && width && height) {
-        const start = percentToPixels({ x: 74, y: 76 }, width, height);
+        const start = percentToPixels({ x: 82, y: 86 }, width, height);
         state.x = start.x;
         state.y = start.y;
         state.targetX = start.x;

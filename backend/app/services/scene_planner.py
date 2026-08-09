@@ -344,9 +344,12 @@ async def _plan_batch(
         "- One scene object per scene_index\n"
         "- Narration length should roughly fit target_seconds when spoken (~2.2 words/sec)\n"
         "- Bullets: 3-5 short student-friendly points\n"
-        "- Stay faithful to source; do not invent historical facts\n"
+        "- Stay faithful to source markdown; do not invent facts or change the topic\n"
         f"- Write narration mainly in language '{language}'\n"
         "- Questions should check understanding\n"
+        "- visual_prompt must describe imagery from THIS scene's markdown only "
+        "(people, places, events, diagrams named in the text). "
+        "Never invent unrelated biology/anatomy/science textbook art\n"
         "- Do not mention video production or rendering — scenes only"
     )
     user = (

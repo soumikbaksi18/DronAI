@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { DeckPlayer } from "@/components/DeckPlayer";
-import { getLessonById, shareUrlForSlug } from "@/lib/lesson-store";
+import { withPresentationImages } from "@/lib/mock-generate";
+import { getLessonById, saveLesson, shareUrlForSlug } from "@/lib/lesson-store";
 import type { LessonExperience } from "@/lib/types";
 
 export default function PreviewPage() {
@@ -14,7 +15,14 @@ export default function PreviewPage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setLesson(getLessonById(params.id));
+    const stored = getLessonById(params.id);
+    if (!stored) {
+      setLesson(null);
+      return;
+    }
+    const hydrated = withPresentationImages(stored);
+    if (hydrated !== stored) saveLesson(hydrated);
+    setLesson(hydrated);
   }, [params.id]);
 
   async function copyShare() {
