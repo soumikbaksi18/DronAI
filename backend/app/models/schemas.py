@@ -58,6 +58,13 @@ class SlideContent(BaseModel):
     speaker_notes: str | None = None
 
 
+class SceneMediaKind(str, Enum):
+    """How the scene will be rendered later — only a label in this service."""
+
+    PRESENTATION = "presentation"  # ~80% — PPT-style slides / paragraphs / images
+    VIDEO = "video"  # ~20% — short video moments
+
+
 class Scene(BaseModel):
     id: str
     part_id: str | None = None
@@ -66,6 +73,7 @@ class Scene(BaseModel):
     narration: str
     visual_prompt: str | None = None
     questions: list[str] = Field(default_factory=list)
+    media_kind: SceneMediaKind = SceneMediaKind.PRESENTATION
 
 
 class Lesson(BaseModel):

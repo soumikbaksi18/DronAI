@@ -43,6 +43,8 @@ export type SlideContent = {
   speaker_notes?: string | null;
 };
 
+export type SceneMediaKind = "presentation" | "video";
+
 export type Scene = {
   id: string;
   part_id?: string | null;
@@ -51,6 +53,7 @@ export type Scene = {
   narration: string;
   visual_prompt?: string | null;
   questions: string[];
+  media_kind?: SceneMediaKind;
 };
 
 export type Lesson = {

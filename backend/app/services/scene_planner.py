@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 
 from app.core.config import get_settings
-from app.models.schemas import MdPart, Scene, SlideContent
+from app.models.schemas import MdPart, Scene, SceneMediaKind, SlideContent
 from app.services.llm import LLMError, chat_completion, extract_json_object
 
 BATCH_SIZE = 4
@@ -142,6 +142,10 @@ async def plan_scenes_for_lesson(
             )
         scenes = ordered
 
+    scenes = assign_scene_media_kinds(scenes)
+    presentation_n = sum(1 for s in scenes if s.media_kind == SceneMediaKind.PRESENTATION)
+    video_n = sum(1 for s in scenes if s.media_kind == SceneMediaKind.VIDEO)
+
     quiz = [
         {
             "id": f"q-{i}",
@@ -156,12 +160,106 @@ async def plan_scenes_for_lesson(
 
     notes = [
         f"Planned {len(scenes)} classroom scenes (requested {scene_count}, clamped to {target_scenes}).",
+        f"Media mix: {presentation_n} presentation (~80%), {video_n} video (~20%) — labels only; content later.",
         f"Director provider: {provider}"
         + (" (sarvam-30b)" if provider == "sarvam" else "")
         + ".",
         "Approve these scenes before moving to the Video generation page.",
     ]
     return scenes, quiz, notes
+
+
+def assign_scene_media_kinds(scenes: list[Scene]) -> list[Scene]:
+    """Mark ~80% of scenes as presentation (ordinary) and ~20% as video (standout).
+
+    Only sets labels — no PPT/video assets are generated here.
+    """
+    if not scenes:
+        return scenes
+
+    n = len(scenes)
+    # Prefer exact 80/20 when possible (e.g. 10 → 8 presentation / 2 video)
+    video_count = int(round(n * 0.2))
+    if n >= 5:
+        video_count = max(1, video_count)
+    video_count = min(video_count, n)
+
+    scored = sorted(
+        enumerate(scenes),
+        key=lambda item: (_scene_standout_score(item[1]), item[0]),
+        reverse=True,
+    )
+    video_indexes = {idx for idx, _ in scored[:video_count]}
+
+    labeled: list[Scene] = []
+    for index, scene in enumerate(scenes):
+        kind = SceneMediaKind.VIDEO if index in video_indexes else SceneMediaKind.PRESENTATION
+        labeled.append(scene.model_copy(update={"media_kind": kind}))
+    return labeled
+
+
+def _scene_standout_score(scene: Scene) -> float:
+    """Higher = more cinematic / less 'mediocre' → prefer VIDEO label."""
+    text = " ".join(
+        [
+            scene.title or "",
+            scene.narration or "",
+            scene.visual_prompt or "",
+            " ".join(scene.questions or []),
+            " ".join((scene.slide.bullets if scene.slide else []) or []),
+        ]
+    ).lower()
+
+    score = 0.0
+    # Everyday / definitional content → presentation
+    for token in (
+        "definition",
+        "means",
+        "summary",
+        "sources",
+        "dates mean",
+        "introduction",
+        "recap",
+        "exercise",
+        "let's discuss",
+        "in short",
+    ):
+        if token in text:
+            score -= 2.0
+
+    # Dramatic / visual / narrative moments → video
+    for token in (
+        "revolution",
+        "battle",
+        "war",
+        "protest",
+        "march",
+        "storm",
+        "revolt",
+        "uprising",
+        "assassination",
+        "coronation",
+        "journey",
+        "map",
+        "timeline",
+        "experiment",
+        "discovery",
+        "drama",
+        "story",
+        "imagine",
+        "visual",
+        "ceremony",
+        "riot",
+        "freedom",
+        "independence",
+    ):
+        if token in text:
+            score += 2.5
+
+    # Slight preference for richer visual prompts / longer spoken beats
+    score += min(len(scene.visual_prompt or ""), 180) / 120.0
+    score += min(len(scene.narration or ""), 400) / 400.0
+    return score
 
 
 def _explode_to_units(parts: list[MdPart]) -> list[dict]:

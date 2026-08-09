@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { api, type Lesson, type MdPart } from "@/lib/api";
+import { api, type Lesson, type MdPart, type Scene, type SceneMediaKind } from "@/lib/api";
 
 const SAMPLE_LESSON = `# What, Where, How and When?
 
@@ -39,6 +39,39 @@ function statusTone(status: string) {
     return "ready";
   }
   return "busy";
+}
+
+function withMediaTags(scenes: Scene[]): (Scene & { media_kind: SceneMediaKind })[] {
+  if (!scenes.length) return [];
+  const alreadyTagged = scenes.every(
+    (scene) => scene.media_kind === "presentation" || scene.media_kind === "video",
+  );
+  if (alreadyTagged) {
+    return scenes.map((scene) => ({
+      ...scene,
+      media_kind: scene.media_kind === "video" ? "video" : "presentation",
+    }));
+  }
+
+  // Fallback 80/20 if backend didn't send media_kind yet
+  const videoCount = Math.max(scenes.length >= 5 ? 1 : 0, Math.round(scenes.length * 0.2));
+  const scored = scenes
+    .map((scene, index) => {
+      const text = `${scene.title} ${scene.narration} ${scene.visual_prompt ?? ""}`.toLowerCase();
+      let score = 0;
+      for (const token of ["revolution", "battle", "war", "protest", "storm", "journey", "freedom"]) {
+        if (text.includes(token)) score += 2;
+      }
+      score += Math.min((scene.visual_prompt ?? "").length, 120) / 80;
+      return { index, score };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const videoIndexes = new Set(scored.slice(0, videoCount).map((item) => item.index));
+
+  return scenes.map((scene, index) => ({
+    ...scene,
+    media_kind: videoIndexes.has(index) ? "video" : "presentation",
+  }));
 }
 
 export default function StudioPage() {
@@ -470,12 +503,12 @@ export default function StudioPage() {
                 <div className="border-b border-[var(--line)] px-4 py-3 sm:px-5">
                   <h2 className="font-[family-name:var(--font-display)] text-lg">Director scenes</h2>
                   <p className="text-xs text-[var(--ink-muted)]">
-                    Slide bullets, narration, and visual prompts
+                    ~80% presentation · ~20% video labels — content is generated on the next page
                   </p>
                 </div>
                 {lesson?.scenes?.length ? (
                   <ul className="studio-scroll max-h-[34rem] space-y-0 overflow-y-auto p-2 sm:p-3">
-                    {lesson.scenes.map((scene, index) => (
+                    {withMediaTags(lesson.scenes).map((scene, index) => (
                       <li
                         key={scene.id}
                         className="rounded-2xl px-3 py-4 transition hover:bg-white/55 sm:px-4"
@@ -484,8 +517,22 @@ export default function StudioPage() {
                           <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-mono text-[11px] text-[var(--accent)]">
                             {String(index + 1).padStart(2, "0")}
                           </span>
-                          <div className="min-w-0">
-                            <p className="font-medium">{scene.title}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium">{scene.title}</p>
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                aria-label={`Scene media type: ${scene.media_kind}`}
+                                className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${
+                                  scene.media_kind === "video"
+                                    ? "border-[var(--foreground)] bg-[var(--foreground)] text-white"
+                                    : "border-[var(--accent)]/30 bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+                                }`}
+                              >
+                                {scene.media_kind === "video" ? "Video" : "Presentation"}
+                              </button>
+                            </div>
                             {scene.slide?.bullets?.length ? (
                               <ul className="mt-2 space-y-1 text-sm text-[var(--ink-muted)]">
                                 {scene.slide.bullets.slice(0, 4).map((bullet) => (
