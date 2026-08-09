@@ -61,29 +61,27 @@ export default function PreviewPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-        <div>
-          <Link
-            href="/dashboard"
-            className="text-sm text-[var(--accent)] transition hover:text-[var(--accent-strong)]"
-          >
-            ← Dashboard
-          </Link>
-          <h1 className="mt-1 font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight">
-            Teacher preview
-          </h1>
-        </div>
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 text-sm text-[var(--accent)] transition hover:text-[var(--accent-strong)]"
+        >
+          <span aria-hidden>←</span>
+          <span>Dashboard</span>
+          <span className="hidden text-[var(--line)] sm:inline">·</span>
+          <span className="hidden text-[var(--ink-muted)] sm:inline">Teacher preview</span>
+        </Link>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={copyShare}
-            className="rounded-2xl bg-[var(--accent-soft)] px-4 py-2 text-sm text-[var(--accent)]"
+            className="rounded-full bg-white/80 px-3.5 py-2 text-sm text-[var(--accent)] ring-1 ring-[var(--line)] transition hover:bg-[var(--accent-soft)]"
           >
             {copied ? "Link copied" : "Copy share link"}
           </button>
           <Link
             href={`/p/${lesson.slug}`}
-            className="rounded-2xl bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white"
+            className="rounded-full bg-[var(--accent)] px-3.5 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
           >
             Open public deck
           </Link>
