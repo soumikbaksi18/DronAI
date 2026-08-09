@@ -40,7 +40,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <ClerkProvider>{children}</ClerkProvider>
+        {/* Keys come from NEXT_PUBLIC_CLERK_* / CLERK_SECRET_KEY (set on Vercel). */}
+        <ClerkProvider afterSignOutUrl="/">{children}</ClerkProvider>
       </body>
     </html>
   );

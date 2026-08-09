@@ -78,6 +78,12 @@ Open:
 - UI: http://localhost:3000
 - Studio flow: http://localhost:3000/studio
 - Backend docs: http://localhost:8000/docs
+
+### Deploy frontend (Vercel)
+
+See [`frontend/README.md`](./frontend/README.md#vercel-deployment).
+
+Summary: import the repo → set **Root Directory** to `frontend` → add Clerk + `NEXT_PUBLIC_API_URL` (HTTPS backend) + OpenAI vars → allow your Vercel origin in backend `CORS_ORIGINS`.
 - GenAI docs: http://localhost:8001/docs
 
 ## Docker Compose (optional)
