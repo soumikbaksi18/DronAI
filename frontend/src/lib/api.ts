@@ -103,4 +103,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ lesson_id: lessonId, command, language }),
     }),
+  textToSpeech: (text: string, language = "en", speaker?: string) =>
+    request<Record<string, unknown>>("/v1/speech/tts", {
+      method: "POST",
+      body: JSON.stringify({ text, language, speaker }),
+    }),
+  speechToText: (file: File, language?: string, mode = "transcribe") => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("mode", mode);
+    if (language) form.append("language", language);
+    return request<Record<string, unknown>>("/v1/speech/stt", {
+      method: "POST",
+      body: form,
+    });
+  },
 };

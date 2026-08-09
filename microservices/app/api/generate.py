@@ -8,4 +8,4 @@ router = APIRouter(prefix="/v1/generate", tags=["generate"])
 
 @router.post("/lesson", response_model=GenerateLessonResponse)
 async def generate_lesson_endpoint(payload: GenerateLessonRequest) -> GenerateLessonResponse:
-    return generate_lesson(payload)
+    return await generate_lesson(payload)

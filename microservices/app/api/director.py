@@ -9,4 +9,4 @@ router = APIRouter(prefix="/v1/director", tags=["director"])
 @router.post("/plan-scenes", response_model=DirectorPlanResponse)
 async def plan_scenes(payload: DirectorPlanRequest) -> DirectorPlanResponse:
     """Classroom Director: convert Markdown chapter parts into classroom scenes."""
-    return plan_scenes_from_parts(payload)
+    return await plan_scenes_from_parts(payload)

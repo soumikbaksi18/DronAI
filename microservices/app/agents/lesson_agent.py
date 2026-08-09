@@ -20,7 +20,7 @@ def _chunk_source(text: str, max_chunks: int = 8) -> list[str]:
     return paragraphs[:max_chunks]
 
 
-def generate_lesson(request: GenerateLessonRequest) -> GenerateLessonResponse:
+async def generate_lesson(request: GenerateLessonRequest) -> GenerateLessonResponse:
     chunks = _chunk_source(request.source_text)
     parts = [
         MdPartIn(
@@ -31,7 +31,7 @@ def generate_lesson(request: GenerateLessonRequest) -> GenerateLessonResponse:
         )
         for index, chunk in enumerate(chunks, start=1)
     ]
-    planned = plan_scenes_from_parts(
+    planned = await plan_scenes_from_parts(
         DirectorPlanRequest(
             title=request.title,
             parts=parts,
