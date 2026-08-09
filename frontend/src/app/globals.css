@@ -23,3 +23,46 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), sans-serif;
 }
+
+@keyframes character-idle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes character-speak {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.03);
+  }
+}
+
+@keyframes character-walk {
+  0% {
+    transform: translateX(12px);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-character-idle {
+  animation: character-idle 2.4s ease-in-out infinite;
+}
+
+.animate-character-speak {
+  animation: character-speak 0.55s ease-in-out infinite;
+}
+
+.animate-character-walk {
+  animation: character-walk 0.55s ease-out forwards;
+}

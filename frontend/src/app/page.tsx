@@ -9,12 +9,20 @@ export default function Home() {
         <p className="text-sm font-semibold tracking-[0.18em] text-[var(--accent)] uppercase">
           GuruDroneAI
         </p>
-        <Link
-          href="/studio"
-          className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-        >
-          Open Studio
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/login"
+            className="rounded-full border border-black/10 bg-white/70 px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-white"
+          >
+            Teacher login
+          </Link>
+          <Link
+            href="/studio/new"
+            className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          >
+            Create lesson
+          </Link>
+        </div>
       </header>
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-6 pb-20 pt-8">
@@ -43,10 +51,16 @@ export default function Home() {
 
         <div className="mt-12 flex flex-wrap gap-3">
           <Link
-            href="/studio"
+            href="/login"
             className="rounded-full bg-[var(--foreground)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
           >
-            Try the scaffold flow
+            Start as teacher
+          </Link>
+          <Link
+            href="/studio"
+            className="rounded-full border border-black/10 bg-white/70 px-5 py-3 text-sm font-medium text-[var(--foreground)] transition hover:bg-white"
+          >
+            API scaffold simulate
           </Link>
           <a
             href="http://localhost:8000/docs"
