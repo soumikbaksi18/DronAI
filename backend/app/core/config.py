@@ -23,6 +23,8 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-4o-mini"
+    openai_image_model: str = "dall-e-3"
+    openai_image_size: str = "1024x1024"
 
     sarvam_api_key: str | None = None
     sarvam_base_url: str = "https://api.sarvam.ai"

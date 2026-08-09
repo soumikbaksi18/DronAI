@@ -14,6 +14,7 @@ from app.services.chapter_splitter import split_into_md_parts
 from app.services.document_extractor import extract_text, normalize_extension
 from app.services.lesson_files import save_md_parts, save_source_file
 from app.services.lesson_store import lesson_store
+from app.services.presentation_generator import generate_presentation_pages
 from app.services.scene_planner import clamp_scene_count, plan_scenes_for_lesson
 
 router = APIRouter(prefix="/v1/lessons", tags=["lessons"])
@@ -181,7 +182,7 @@ async def generate_lesson(
 
 @router.post("/{lesson_id}/approve-scenes", response_model=Lesson)
 async def approve_scenes(lesson_id: UUID) -> Lesson:
-    """Mark planned scenes as approved — gate before Video generation page."""
+    """Mark planned scenes as approved — gate before presentation generation."""
     lesson = lesson_store.get(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
@@ -190,3 +191,38 @@ async def approve_scenes(lesson_id: UUID) -> Lesson:
 
     lesson.scenes_approved = True
     return lesson_store.update(lesson)
+
+
+@router.post("/{lesson_id}/presentations/generate", response_model=Lesson)
+async def generate_presentations(lesson_id: UUID) -> Lesson:
+    """Generate PPT-style pages (paragraphs + images) for presentation-tagged scenes."""
+    lesson = lesson_store.get(lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    if not lesson.scenes:
+        raise HTTPException(status_code=400, detail="Plan scenes before generating presentations")
+    if not lesson.scenes_approved:
+        raise HTTPException(status_code=400, detail="Approve scenes before generating presentations")
+
+    try:
+        pages = await generate_presentation_pages(
+            lesson_id=lesson.id,
+            lesson_title=lesson.title,
+            scenes=lesson.scenes,
+            subject=lesson.subject,
+            language=lesson.language,
+            only_presentation_scenes=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Presentation generation failed: {exc}") from exc
+
+    lesson.presentation_pages = pages
+    return lesson_store.update(lesson)
+
+
+@router.get("/{lesson_id}/presentations", response_model=Lesson)
+async def get_presentations(lesson_id: UUID) -> Lesson:
+    lesson = lesson_store.get(lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    return lesson

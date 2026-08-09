@@ -56,6 +56,17 @@ export type Scene = {
   media_kind?: SceneMediaKind;
 };
 
+export type PresentationPage = {
+  scene_id: string;
+  title: string;
+  headline: string;
+  paragraphs: string[];
+  image_prompt?: string | null;
+  image_url?: string | null;
+  media_kind?: SceneMediaKind;
+  status: string;
+};
+
 export type Lesson = {
   id: string;
   title: string;
@@ -69,8 +80,15 @@ export type Lesson = {
   md_parts: MdPart[];
   parts_dir?: string | null;
   scenes: Scene[];
+  presentation_pages?: PresentationPage[];
   quiz: unknown[];
 };
+
+export function assetUrl(path?: string | null): string | null {
+  if (!path) return null;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  return `${API_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+}
 
 export const api = {
   health: () => request<HealthResponse>("/health"),
@@ -102,6 +120,7 @@ export const api = {
     });
   },
   getLessonParts: (lessonId: string) => request<MdPart[]>(`/v1/lessons/${lessonId}/parts`),
+  getLesson: (lessonId: string) => request<Lesson>(`/v1/lessons/${lessonId}`),
   generateLesson: (lessonId: string, sceneCount = 8) =>
     request<Lesson>(`/v1/lessons/${lessonId}/generate`, {
       method: "POST",
@@ -109,6 +128,10 @@ export const api = {
     }),
   approveScenes: (lessonId: string) =>
     request<Lesson>(`/v1/lessons/${lessonId}/approve-scenes`, { method: "POST" }),
+  generatePresentations: (lessonId: string) =>
+    request<Lesson>(`/v1/lessons/${lessonId}/presentations/generate`, { method: "POST" }),
+  getPresentations: (lessonId: string) =>
+    request<Lesson>(`/v1/lessons/${lessonId}/presentations`),
   classroomCommand: (lessonId: string, command: string, language = "en") =>
     request<Record<string, unknown>>("/v1/classroom/command", {
       method: "POST",

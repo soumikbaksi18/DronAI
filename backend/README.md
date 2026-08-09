@@ -39,9 +39,10 @@ When `SARVAM_API_KEY` is set, uploads use **Sarvam Document AI** (`/doc-ai/v1/jo
 1. Teacher sets `scene_count` (e.g. 8)
 2. Python packs MD parts into that many scene buckets
 3. Sarvam 30B / OpenAI writes slide bullets, narration, visual prompt, questions
-4. `POST /v1/lessons/{id}/approve-scenes` marks them ready for the later Video generation page
+4. `POST /v1/lessons/{id}/approve-scenes` marks them ready for presentation generation
+5. `POST /v1/lessons/{id}/presentations/generate` builds PPT-style pages (paragraphs + DALL·E images) for presentation-tagged scenes
 
-Live classroom commands may still use the GenAI service on `:8001`.
+Live classroom commands may still use the GenAI service on `:8001`. Video scenes are handled on a later page.
 
 ## Notes
 

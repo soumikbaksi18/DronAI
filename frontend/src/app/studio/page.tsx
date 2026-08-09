@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api, type Lesson, type MdPart, type Scene, type SceneMediaKind } from "@/lib/api";
 
 const SAMPLE_LESSON = `# What, Where, How and When?
@@ -75,6 +76,7 @@ function withMediaTags(scenes: Scene[]): (Scene & { media_kind: SceneMediaKind }
 }
 
 export default function StudioPage() {
+  const router = useRouter();
   const [title, setTitle] = useState("What, Where, How and When?");
   const [sourceText, setSourceText] = useState(SAMPLE_LESSON);
   const [file, setFile] = useState<File | null>(null);
@@ -165,8 +167,8 @@ export default function StudioPage() {
       setStatus("Approving scenes…");
       const approved = await api.approveScenes(lesson.id);
       setLesson(approved);
-      setStatus("Approved — ready for Video generation page");
-      setResultTab("scenes");
+      setStatus("Approved — opening presentation pages…");
+      router.push(`/studio/${approved.id}/presentations`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Approve failed");
       setStatus("Failed");
@@ -209,7 +211,7 @@ export default function StudioPage() {
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)] sm:text-base">
             Upload an NCERT chapter, split it into Markdown parts, plan classroom scenes, then approve
-            them before moving to Video generation.
+            them before generating presentation pages.
           </p>
         </div>
 
@@ -287,7 +289,7 @@ export default function StudioPage() {
                 className="w-28 rounded-2xl border border-[var(--line)] bg-white/80 px-3.5 py-2.5 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white"
               />
               <p className="text-xs leading-5 text-[var(--ink-muted)]">
-                Classroom scenes only on this page. Video generation comes after approval.
+                Classroom scenes only on this page. Presentation pages come after approval.
               </p>
             </div>
           </label>
@@ -398,9 +400,12 @@ export default function StudioPage() {
               {lesson?.scenes_approved ? "Scenes approved" : "Approve scenes"}
             </button>
             {lesson?.scenes_approved ? (
-              <p className="text-xs leading-5 text-[var(--ink-muted)]">
-                Next step: Video generation page (coming next).
-              </p>
+              <Link
+                href={`/studio/${lesson.id}/presentations`}
+                className="text-center text-xs leading-5 text-[var(--accent)] underline-offset-2 hover:underline"
+              >
+                Open presentation pages →
+              </Link>
             ) : null}
           </div>
         </section>

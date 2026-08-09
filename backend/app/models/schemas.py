@@ -76,6 +76,19 @@ class Scene(BaseModel):
     media_kind: SceneMediaKind = SceneMediaKind.PRESENTATION
 
 
+class PresentationPage(BaseModel):
+    """One PPT-style page generated for a scene (paragraphs + optional image)."""
+
+    scene_id: str
+    title: str
+    headline: str
+    paragraphs: list[str] = Field(default_factory=list)
+    image_prompt: str | None = None
+    image_url: str | None = None
+    media_kind: SceneMediaKind = SceneMediaKind.PRESENTATION
+    status: str = "ready"  # ready | text_only | failed
+
+
 class Lesson(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     title: str
@@ -92,6 +105,7 @@ class Lesson(BaseModel):
     md_parts: list[MdPart] = Field(default_factory=list)
     parts_dir: str | None = None
     scenes: list[Scene] = Field(default_factory=list)
+    presentation_pages: list[PresentationPage] = Field(default_factory=list)
     quiz: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
