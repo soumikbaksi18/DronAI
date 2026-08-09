@@ -32,17 +32,23 @@ Product vision lives in [`Guru Drone AI Project.md`](./Guru%20Drone%20AI%20Proje
 - Python 3.11+
 - npm
 
-### 1. Environment
+### 1. Environment (per service — no root `.env`)
 
 ```bash
-cp .env.example .env
-cp .env.example frontend/.env.local
+cp backend/.env.example backend/.env
+cp microservices/.env.example microservices/.env
+cp frontend/.env.example frontend/.env.local
 ```
+
+Put API keys in the service that uses them:
+- `backend/.env` — Document AI + scene planner (OpenAI / Sarvam)
+- `microservices/.env` — live classroom commands + Bulbul/Saaras speech
+- `frontend/.env.local` — `NEXT_PUBLIC_API_URL` only
 
 ### 2. GenAI microservice
 
 ```bash
-cd genai-microservices
+cd microservices
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -80,20 +86,35 @@ Open:
 docker compose up --build
 ```
 
-## Scaffold status
+## Current lesson pipeline
+
+```text
+PDF / Markdown upload
+        ↓
+   Text extract
+        ↓
+ Split into MD parts  (saved under uploads/<lesson_id>/parts/)
+        ↓
+ Classroom Director  (slides + visuals + narration)
+        ↓
+   Scenes ready → Simulate / Live commands
+```
 
 What works today (deterministic stubs — no API keys required):
 
-- Create a lesson from markdown/text
-- Generate scenes / narration / quiz prompts
+- Upload NCERT-style PDF or Markdown chapter
+- Split into structured Markdown parts on disk
+- Classroom Director plans scenes from those parts
 - Simulate four student personas and get a readiness report
 - Send a live classroom command (e.g. explain in Hindi)
 
+Sample chapter: `samples/ncert_history_ch1.md`
+
 What to build next (see MVP in the project doc):
 
-- Real LLM generation + grounded content
+- Richer Director visuals / LLM narration (friend lane)
 - Sarvam speech (STT / TTS / multilingual)
-- Persistent storage & PDF upload
+- Persistent database storage
 - Live classroom presentation + adaptive moment
 - Rich readiness report UI
 

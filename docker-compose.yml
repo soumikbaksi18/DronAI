@@ -7,6 +7,7 @@ services:
       - GENAI_HOST=0.0.0.0
       - GENAI_PORT=8001
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - SARVAM_API_KEY=${SARVAM_API_KEY:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
       interval: 10s

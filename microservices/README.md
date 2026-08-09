@@ -1,31 +1,49 @@
 # GuruDroneAI GenAI Microservices
 
-FastAPI service hosting agent stubs for:
+FastAPI service hosting agents for:
 
-- **Lesson Agent** — turns source text into scenes, narration, visuals prompts, quiz
+- **Classroom Director** — MD parts → scenes (slides, visual prompts, narration) + live commands
+- **Sarvam speech** — Bulbul V3 TTS + Saaras V3 STT
+- **Lesson Agent** — legacy whole-text path (delegates to Director)
 - **Student Persona Crew** — simulates Fast / Struggling / Visual / Distracted learners
-- **Classroom Director** — interprets live teacher commands
 
 ## Setup
 
 ```bash
-cd genai-microservices
+cd microservices
 python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env   # keys live in microservices/.env only
 uvicorn app.main:app --reload --port 8001
 ```
 
 API docs: http://localhost:8001/docs
+
+## Env (`microservices/.env`)
+
+| Variable | Purpose |
+|----------|---------|
+| `SARVAM_API_KEY` | Sarvam subscription key (chat + Bulbul + Saaras) |
+| `SARVAM_CHAT_MODEL` | default `sarvam-30b` |
+| `SARVAM_TTS_MODEL` | default `bulbul:v3` |
+| `SARVAM_STT_MODEL` | default `saaras:v3` |
+| `OPENAI_API_KEY` | Optional LLM fallback for live classroom commands |
+
+Provider preference: **Sarvam → OpenAI → heuristic stub**.
 
 ## Key routes
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/health` | Service health |
-| POST | `/v1/generate/lesson` | Generate lesson scenes |
+| GET | `/health/providers` | Which LLM/speech keys are loaded |
+| POST | `/v1/director/plan-scenes` | Director: MD parts → classroom scenes |
+| POST | `/v1/generate/lesson` | Legacy whole-text generation |
 | POST | `/v1/simulate/classroom` | Run persona simulation |
 | POST | `/v1/classroom/command` | Handle teacher voice/text commands |
+| POST | `/v1/speech/tts` | Bulbul text-to-speech |
+| POST | `/v1/speech/stt` | Saaras speech-to-text |
 | POST | `/v1/video/generate` | Queue a job (form: `prompt`, `mode`, `seconds`, `character`, optional `reference_image`) |
 | GET | `/v1/video/jobs/{id}` | Poll job status, stage, script and timing |
 | GET | `/v1/video/characters` | Character keys for the `character` field |
@@ -37,7 +55,7 @@ API docs: http://localhost:8001/docs
 
 ## Video generation
 
-Config is read from the repo-root `.env` (a `microservices/.env` overrides it).
+Config comes from `microservices/.env` like every other service here.
 Every job calls **Sora 2** with `OPENAI_API_KEY` — $0.10/sec, so ~$0.80 for the
 default 8s clip. `seconds` accepts `4`, `8` or `12`; portrait renders 720x1280,
 scene 1280x720. There is no mock: a missing key or an API error fails the job
@@ -112,11 +130,23 @@ python -m app.services.media        # both alignment directions through real FFm
 python -m app.services.videogen     # routing, image fitting, full pipeline (APIs stubbed)
 ```
 
-`mode=auto` keyword-routes to portrait (9:16, talking historical figure, native
-dialogue audio) or scene (16:9, cinematic). Veo's audio is prompt-driven, not a
-deterministic lip-sync engine — add a dedicated lip-sync stage if you need
-phoneme-level accuracy.
+## Director contract
 
-## Notes
+`POST /v1/director/plan-scenes` expects:
 
-Current agents return deterministic scaffold responses so the monorepo runs without LLM keys. Replace agent internals with real model calls (OpenAI, Sarvam, etc.) when ready.
+```json
+{
+  "title": "Chapter title",
+  "language": "en",
+  "subject": "History",
+  "parts": [
+    {
+      "id": "part-01",
+      "title": "1.1 Finding out about the past",
+      "markdown": "# 1.1 ...\\n\\nBody..."
+    }
+  ]
+}
+```
+
+Each scene includes `slide` (headline + bullets), `visual_prompt`, `narration`, and `questions`, grounded in a `part_id`.

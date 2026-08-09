@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse
 
-from app.api import classroom, generate, health, simulate, video
+from app.api import classroom, director, generate, health, simulate, speech, video
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -11,16 +11,19 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description=(
-        "GuruDroneAI GenAI microservices — lesson generation, student persona simulation, "
-        "and classroom director stubs."
+        "GuruDroneAI GenAI microservices — Classroom Director scene planning, "
+        "Sarvam speech (Bulbul/Saaras), student persona simulation, live classroom "
+        "commands, and Sora 2 historical video generation."
     ),
     version="0.1.0",
 )
 
 app.include_router(health.router)
+app.include_router(director.router)
 app.include_router(generate.router)
 app.include_router(simulate.router)
 app.include_router(classroom.router)
+app.include_router(speech.router)
 app.include_router(video.router)
 
 
@@ -44,9 +47,9 @@ async def info() -> dict:
         "docs": "/docs",
         "health": "/health",
         "agents": [
+            "director_agent",
             "lesson_agent",
             "student_personas",
-            "director_agent",
             "videogen",
         ],
         "video_demo": "/videogen.html",
