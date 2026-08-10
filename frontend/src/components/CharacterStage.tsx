@@ -16,8 +16,8 @@ type Props = {
   className?: string;
 };
 
-/** Bottom-right pocket of the PPT slide the guide is allowed to roam, in percent. */
-const ROAM = { minX: 62, maxX: 94, minY: 68, maxY: 93 };
+/** Presenter pocket inside the visual panel (percent of that panel). */
+const ROAM = { minX: 48, maxX: 90, minY: 64, maxY: 92 };
 const WALK_SPEED = 145; // css px per second
 const STEP_LENGTH = 26; // px of travel between walk frames
 const ARRIVE_EPSILON = 3;
@@ -138,8 +138,8 @@ export function CharacterStage({
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = container.clientWidth;
       height = container.clientHeight;
-      // Keep the guide small enough to live inside the bottom-right image pocket.
-      charHeight = Math.max(84, Math.min(150, height * 0.22));
+      // Sized for the visual panel's lower-right presenter pocket.
+      charHeight = Math.max(78, Math.min(138, height * 0.28));
 
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
@@ -153,7 +153,7 @@ export function CharacterStage({
 
       const state = motion.current;
       if (!state.seeded && width && height) {
-        const start = percentToPixels({ x: 82, y: 86 }, width, height);
+        const start = percentToPixels({ x: 78, y: 86 }, width, height);
         state.x = start.x;
         state.y = start.y;
         state.targetX = start.x;
@@ -275,14 +275,19 @@ export function CharacterStage({
 
       const bubble = bubbleRef.current;
       if (bubble) {
-        const bubbleX = Math.min(Math.max(feetX, 120), Math.max(width - 120, 120));
-        const bubbleY = groundY + bob - drawHeight - 12;
-        bubble.style.transform = `translate3d(${bubbleX}px, ${bubbleY}px, 0) translate(-50%, -100%)`;
+        // Prefer the bubble to the left of the guide so it stays over the image,
+        // not spilling into the text column.
+        const preferLeft = feetX > width * 0.55;
+        const bubbleX = preferLeft
+          ? Math.max(88, feetX - drawWidth * 0.55)
+          : Math.min(width - 88, feetX + drawWidth * 0.2);
+        const bubbleY = Math.max(56, groundY + bob - drawHeight - 10);
+        bubble.style.transform = `translate3d(${bubbleX}px, ${bubbleY}px, 0) translate(${preferLeft ? "-100%" : "0"}, -100%)`;
       }
 
       const label = labelRef.current;
       if (label) {
-        label.style.transform = `translate3d(${feetX}px, ${groundY + 10}px, 0) translate(-50%, 0)`;
+        label.style.transform = `translate3d(${feetX}px, ${groundY + 8}px, 0) translate(-50%, 0)`;
       }
     };
 
@@ -316,7 +321,7 @@ export function CharacterStage({
       <div
         ref={bubbleRef}
         aria-live="polite"
-        className={`absolute top-0 left-0 max-w-[15rem] rounded-2xl bg-white/95 px-3 py-2 text-xs leading-5 text-[var(--foreground)] shadow-sm ring-1 ring-black/5 transition-opacity duration-200 ${
+        className={`absolute top-0 left-0 max-w-[13.5rem] rounded-2xl bg-white/95 px-3 py-2 text-xs leading-5 text-[var(--foreground)] shadow-md ring-1 ring-black/8 transition-opacity duration-200 ${
           speech ? "opacity-100" : "opacity-0"
         }`}
         style={{ willChange: "transform" }}
@@ -329,8 +334,9 @@ export function CharacterStage({
         className="absolute top-0 left-0 text-center whitespace-nowrap"
         style={{ willChange: "transform" }}
       >
-        <p className="text-xs font-semibold text-[var(--foreground)]">{character.name}</p>
-        <p className="text-[0.65rem] text-[var(--ink-muted)]">{character.role}</p>
+        <p className="rounded-full bg-black/35 px-2 py-0.5 text-[0.65rem] font-semibold text-white backdrop-blur-sm">
+          {character.name}
+        </p>
       </div>
 
       {!sheet ? (

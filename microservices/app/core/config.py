@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     sarvam_tts_speaker: str = "shubh"
     sarvam_stt_model: str = "saaras:v3"
 
+    # Video pipeline (Sora 2 clip + Sarvam voice track)
+    sora_model: str = "sora-2"
+    script_model: str = "gpt-4o-mini"
+    video_output_dir: str = "outputs"
+    video_upload_dir: str = "uploads"
+
     @property
     def has_sarvam(self) -> bool:
         key = (self.sarvam_api_key or "").strip()
